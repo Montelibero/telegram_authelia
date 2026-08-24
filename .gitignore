@@ -50,6 +50,7 @@ local/*
 !local/meta/BRANCHES.md
 !local/meta/rebuild-deploy.sh
 !local/meta/telegram-auth-design.md
+!local/meta/telegram-auth-implementation-plan.md
 
 # Added by ggshield
 .cache_ggshield
