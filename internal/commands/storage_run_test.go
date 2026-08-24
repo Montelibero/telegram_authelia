@@ -56,6 +56,22 @@ func TestLoadProvidersStorageRunE(t *testing.T) {
 	assert.Nil(t, ctx.providers.StorageProvider)
 }
 
+func TestRunStorageUserImportDryRun(t *testing.T) {
+	ctx := context.Background()
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	buf := &bytes.Buffer{}
+
+	err := runStorageUserImport(ctx, buf, store, filepath.Join("testdata", "users_database.yml"), "eurmtl.me", true)
+	require.NoError(t, err)
+	assert.Equal(t, "SQL user import: dry-run=true created=1 unchanged=0 conflicts=0\nCreated: bublik\n", buf.String())
+
+	_, found, err := store.LoadMTLUser(ctx, "bublik")
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
 func TestCmdCtx_ConfigValidateStorageRunE(t *testing.T) {
 	dir := t.TempDir()
 

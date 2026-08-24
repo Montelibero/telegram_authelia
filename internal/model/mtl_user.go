@@ -57,6 +57,7 @@ type MTLUserDetails struct {
 type MTLUserImport struct {
 	Username     string
 	DisplayName  string
+	Status       string
 	PasswordHash *string
 	Emails       []MTLUserImportEmail
 	Groups       []string

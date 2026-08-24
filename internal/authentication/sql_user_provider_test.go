@@ -93,6 +93,16 @@ func (s *testSQLUserStore) LoadMTLUser(_ context.Context, username string) (mode
 	return details, found, nil
 }
 
+func (s *testSQLUserStore) FindMTLUserByEmail(_ context.Context, email string) (string, bool, error) {
+	for username, details := range s.users {
+		if details.PrimaryEmail == email {
+			return username, true, nil
+		}
+	}
+
+	return "", false, nil
+}
+
 func (s *testSQLUserStore) UpdateMTLUserPassword(_ context.Context, userID int64, passwordHash *string, expectedVersion int) error {
 	for username, details := range s.users {
 		if details.User.ID == userID && details.User.Version == expectedVersion {

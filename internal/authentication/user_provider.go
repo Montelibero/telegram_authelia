@@ -10,7 +10,14 @@ import (
 type SQLUserStore interface {
 	MigrateMTL(ctx context.Context) (err error)
 	LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error)
+	FindMTLUserByEmail(ctx context.Context, email string) (username string, found bool, err error)
 	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
+}
+
+// SQLUserImportStore extends SQLUserStore with atomic user creation.
+type SQLUserImportStore interface {
+	SQLUserStore
+	ImportMTLUsers(ctx context.Context, users []model.MTLUserImport) (err error)
 }
 
 // UserProvider is the interface for interacting with the authentication backends.

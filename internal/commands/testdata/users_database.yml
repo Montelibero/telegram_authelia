@@ -1,0 +1,6 @@
+users:
+  bublik:
+    password: "$plaintext$password"
+    displayname: "Bublik"
+    groups:
+      - admins

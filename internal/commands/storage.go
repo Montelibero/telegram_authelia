@@ -407,10 +407,29 @@ func newStorageUserCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 	}
 
 	cmd.AddCommand(
+		newStorageUserImportCmd(ctx),
 		newStorageUserIdentifiersCmd(ctx),
 		newStorageUserTOTPCmd(ctx),
 		newStorageUserWebAuthnCmd(ctx),
 	)
+
+	return cmd
+}
+
+func newStorageUserImportCmd(ctx *CmdCtx) (cmd *cobra.Command) {
+	cmd = &cobra.Command{
+		Use:   "import",
+		Short: cmdAutheliaStorageUserImportShort,
+		Long:  cmdAutheliaStorageUserImportLong,
+		Args:  cobra.NoArgs,
+		RunE:  ctx.StorageUserImportRunE,
+
+		DisableAutoGenTag: true,
+	}
+
+	cmd.Flags().String(cmdFlagNameFrom, "", "path to users_database.yml")
+	cmd.Flags().Bool(cmdFlagNameDryRun, false, "validate and report without writing users")
+	_ = cmd.MarkFlagRequired(cmdFlagNameFrom)
 
 	return cmd
 }

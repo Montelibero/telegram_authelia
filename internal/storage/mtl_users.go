@@ -55,6 +55,24 @@ ORDER BY g.name`)
 	return details, true, nil
 }
 
+// FindMTLUserByEmail resolves the owner of a normalized email address.
+func (p *SQLProvider) FindMTLUserByEmail(ctx context.Context, email string) (username string, found bool, err error) {
+	query := p.db.Rebind(`
+SELECT u.username
+FROM mtl_users AS u
+INNER JOIN mtl_user_emails AS e ON e.user_id = u.id
+WHERE e.email = ?`)
+	if err = p.db.GetContext(ctx, &username, query, email); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+
+		return "", false, fmt.Errorf("failed to find MTL user by email: %w", err)
+	}
+
+	return username, true, nil
+}
+
 // UpdateMTLUserPassword updates a password using optimistic version checking.
 func (p *SQLProvider) UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error) {
 	query := p.db.Rebind(`
@@ -105,8 +123,13 @@ func (p *SQLProvider) ImportMTLUsers(ctx context.Context, users []model.MTLUserI
 	}()
 
 	for _, user := range users {
-		query := tx.Rebind(`INSERT INTO mtl_users (username, display_name, password_hash) VALUES (?, ?, ?)`)
-		result, execErr := tx.ExecContext(ctx, query, user.Username, user.DisplayName, user.PasswordHash)
+		status := user.Status
+		if status == "" {
+			status = model.MTLUserStatusActive
+		}
+
+		query := tx.Rebind(`INSERT INTO mtl_users (username, display_name, status, password_hash) VALUES (?, ?, ?, ?)`)
+		result, execErr := tx.ExecContext(ctx, query, user.Username, user.DisplayName, status, user.PasswordHash)
 		if execErr != nil {
 			return mapMTLConflict("failed to insert MTL user", execErr)
 		}
