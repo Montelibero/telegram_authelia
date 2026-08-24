@@ -1,0 +1,8 @@
+authentication_backend:
+  sql:
+    generated_email_domain: eurmtl.me
+
+storage:
+  encryption_key: authelia-test-key-not-a-secret-authelia-test-key-not-a-secret
+  local:
+    path: /tmp/authelia-m0-rehearsal.sqlite3
