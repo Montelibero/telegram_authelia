@@ -41,5 +41,14 @@ internal/suites/testdata/*.actual.png
 .graphifyignore
 graphify-out/
 
+# Generated architecture map for Codex codespaces
+.belief_map.sexp
+.belief_map_cache.json
+local/*
+!local/meta/
+!local/meta/fork-overlay-workflow.md
+!local/meta/BRANCHES.md
+!local/meta/rebuild-deploy.sh
+
 # Added by ggshield
 .cache_ggshield
