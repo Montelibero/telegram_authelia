@@ -1,15 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/valyala/fasthttp"
 	"go.uber.org/mock/gomock"
@@ -21,7 +24,68 @@ import (
 	"github.com/authelia/authelia/v4/internal/model"
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/regulation"
+	"github.com/authelia/authelia/v4/internal/storage"
 )
+
+func TestFirstFactorPasswordSQLUserProvider(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	defer func() { require.NoError(t, store.Close()) }()
+	password := "$plaintext$password"
+	require.NoError(t, store.MigrateMTL(context.Background()))
+	require.NoError(t, store.ImportMTLUsers(context.Background(), []model.MTLUserImport{{
+		Username: "bublik", DisplayName: "Bublik", PasswordHash: &password,
+		Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true, Verified: true}},
+		Groups: []string{"admins", "app:grafana"},
+	}}))
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	require.NoError(t, provider.StartupCheck())
+	mock.Ctx.Providers.UserProvider = provider
+
+	mock.StorageMock.EXPECT().LoadBannedIP(gomock.Eq(mock.Ctx), gomock.Any()).Return(nil, nil)
+	mock.StorageMock.EXPECT().LoadBannedUser(gomock.Eq(mock.Ctx), gomock.Eq("bublik")).Return(nil, nil)
+	mock.StorageMock.EXPECT().AppendAuthenticationLog(mock.Ctx, gomock.Any()).Return(nil)
+	mock.Ctx.Request.SetBodyString(`{"username":"bublik","password":"password","keepMeLoggedIn":false}`)
+
+	FirstFactorPasswordPOST(nil)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.Equal(t, "bublik", userSession.Username)
+	assert.Equal(t, []string{"bublik@eurmtl.me"}, userSession.Emails)
+	assert.Equal(t, []string{"admins", "app:grafana"}, userSession.Groups)
+	assert.Equal(t, authentication.OneFactor, userSession.AuthenticationLevel(false))
+}
+
+func TestFirstFactorPasswordSQLDisabledUser(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	defer func() { require.NoError(t, store.Close()) }()
+	password := "$plaintext$password"
+	require.NoError(t, store.MigrateMTL(context.Background()))
+	require.NoError(t, store.ImportMTLUsers(context.Background(), []model.MTLUserImport{{
+		Username: "disabled", DisplayName: "Disabled", Status: model.MTLUserStatusDisabled, PasswordHash: &password,
+		Emails: []model.MTLUserImportEmail{{Email: "disabled@eurmtl.me", Primary: true}},
+	}}))
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	require.NoError(t, provider.StartupCheck())
+	mock.Ctx.Providers.UserProvider = provider
+
+	mock.StorageMock.EXPECT().LoadBannedIP(gomock.Eq(mock.Ctx), gomock.Any()).Return(nil, nil)
+	mock.StorageMock.EXPECT().AppendAuthenticationLog(mock.Ctx, gomock.Any()).Return(nil)
+	mock.Ctx.Request.SetBodyString(`{"username":"disabled","password":"password","keepMeLoggedIn":false}`)
+
+	FirstFactorPasswordPOST(nil)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusUnauthorized, mock.Ctx.Response.StatusCode())
+}
 
 type FirstFactorSuite struct {
 	suite.Suite

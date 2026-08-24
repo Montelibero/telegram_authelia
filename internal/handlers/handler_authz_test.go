@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1233,6 +1234,52 @@ func (s *AuthzSuite) TestShouldNotFailOnMissingEmail() {
 	s.Equal(testUsername, string(mock.Ctx.Response.Header.PeekBytes(headerRemoteUser)))
 	s.Equal("John Smith", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteName)))
 	s.Equal("abc,123", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteGroups)))
+}
+
+func (s *AuthzSuite) TestShouldForwardSQLUserAttributes() {
+	if s.implementation != AuthzImplForwardAuth {
+		s.T().Skip()
+	}
+
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(s.T().TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	defer func() { s.Require().NoError(store.Close()) }()
+	password := "$plaintext$password"
+	s.Require().NoError(store.MigrateMTL(s.T().Context()))
+	s.Require().NoError(store.ImportMTLUsers(s.T().Context(), []model.MTLUserImport{{
+		Username: "bublik", DisplayName: "Bublik", PasswordHash: &password,
+		Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true, Verified: true}},
+		Groups: []string{"admins", "app:grafana"},
+	}}))
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	s.Require().NoError(provider.StartupCheck())
+	details, err := provider.GetDetails("bublik")
+	s.Require().NoError(err)
+
+	mock := mocks.NewMockAutheliaCtx(s.T())
+	defer mock.Close()
+	setUpMockClock(mock)
+	authz := s.Builder().WithConfig(&mock.Ctx.Configuration).Build()
+	targetURI := s.RequireParseRequestURI("https://bypass.example.com")
+	s.setRequest(mock.Ctx, fasthttp.MethodGet, targetURI, true, false)
+
+	userSession, err := mock.Ctx.GetSession()
+	s.Require().NoError(err)
+	userSession.Username = details.Username
+	userSession.DisplayName = details.DisplayName
+	userSession.Groups = details.Groups
+	userSession.Emails = details.Emails
+	userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+	userSession.RefreshTTL = mock.Clock.Now().Add(5 * time.Minute)
+	s.Require().NoError(mock.Ctx.SaveSession(userSession))
+
+	authz.Handler(mock.Ctx)
+
+	s.Equal(fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	s.Equal("bublik", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteUser)))
+	s.Equal("bublik@eurmtl.me", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteEmail)))
+	s.Equal("admins,app:grafana", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteGroups)))
+	s.Equal("Bublik", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteName)))
 }
 
 func (s *AuthzSuite) TestShouldApplyPolicyOfOneFactorDomain() {
