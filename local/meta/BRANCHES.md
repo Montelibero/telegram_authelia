@@ -30,6 +30,8 @@ Temporary `security/CVE-*` overlays are inserted after `local/meta` and before p
 | `feat/telegram-account-linking` | `local/auth-overlay` | Link a stable Telegram numeric ID to an existing local user | Planned |
 | `feat/telegram-login` | `local/auth-overlay` | Telegram OIDC login with Authorization Code Flow and PKCE | Planned |
 
+The approved product design is documented in `local/meta/telegram-auth-design.md`.
+
 ## Deploy order
 
 ```text

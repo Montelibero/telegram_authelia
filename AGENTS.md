@@ -2,7 +2,7 @@
 
 ## Fork workflow
 
-- Read `local/meta/fork-overlay-workflow.md` and `local/meta/BRANCHES.md` before changing code, branches, remotes, or deployment files.
+- Read `local/meta/fork-overlay-workflow.md`, `local/meta/BRANCHES.md`, and `local/meta/telegram-auth-design.md` before changing authentication code, branches, remotes, or deployment files.
 - `master` is a clean mirror of `upstream/master`. Never add local commits to `master`.
 - `release-base` points to the selected stable Authelia release and is the base for overlays and deployment.
 - Never develop or commit directly on `deploy`. It is a generated integration branch.

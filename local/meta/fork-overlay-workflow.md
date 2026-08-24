@@ -89,6 +89,7 @@ This branch contains only fork-maintenance material:
 - `AGENTS.md`;
 - `local/meta/fork-overlay-workflow.md`;
 - `local/meta/BRANCHES.md`;
+- `local/meta/telegram-auth-design.md`;
 - `local/meta/rebuild-deploy.sh`.
 
 It must not contain product code.

@@ -49,6 +49,7 @@ local/*
 !local/meta/fork-overlay-workflow.md
 !local/meta/BRANCHES.md
 !local/meta/rebuild-deploy.sh
+!local/meta/telegram-auth-design.md
 
 # Added by ggshield
 .cache_ggshield
