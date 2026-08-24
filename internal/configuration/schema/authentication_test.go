@@ -65,6 +65,16 @@ func TestAuthenticationBackendExtraAttribute(t *testing.T) {
 	}
 }
 
+func TestAuthenticationBackendSQL(t *testing.T) {
+	backend := AuthenticationBackend{
+		SQL: &AuthenticationBackendSQL{
+			GeneratedEmailDomain: "eurmtl.me",
+		},
+	}
+
+	assert.Equal(t, "eurmtl.me", backend.SQL.GeneratedEmailDomain)
+}
+
 func TestAuthenticationBackendLDAPAttributesAttribute(t *testing.T) {
 	testCases := []struct {
 		name  string

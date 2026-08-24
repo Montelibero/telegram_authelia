@@ -19,7 +19,21 @@ import (
 
 // ValidateAuthenticationBackend validates and updates the authentication backend configuration.
 func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validator *schema.StructValidator) {
-	if config.LDAP == nil && config.File == nil {
+	backends := 0
+
+	if config.File != nil {
+		backends++
+	}
+
+	if config.LDAP != nil {
+		backends++
+	}
+
+	if config.SQL != nil {
+		backends++
+	}
+
+	if backends == 0 {
 		validator.Push(errors.New(errFmtAuthBackendNotConfigured))
 	}
 
@@ -40,7 +54,7 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 		}
 	}
 
-	if config.LDAP != nil && config.File != nil {
+	if backends > 1 {
 		validator.Push(errors.New(errFmtAuthBackendMultipleConfigured))
 	}
 
@@ -50,6 +64,17 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 
 	if config.LDAP != nil {
 		validateLDAPAuthenticationBackend(config, validator)
+	}
+
+	if config.SQL != nil {
+		validateSQLAuthenticationBackend(config.SQL, validator)
+	}
+}
+
+// validateSQLAuthenticationBackend validates the SQL authentication backend configuration.
+func validateSQLAuthenticationBackend(config *schema.AuthenticationBackendSQL, validator *schema.StructValidator) {
+	if config.GeneratedEmailDomain == "" {
+		validator.Push(errors.New(errFmtSQLAuthBackendGeneratedEmailDomainNotConfigured))
 	}
 }
 

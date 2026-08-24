@@ -28,12 +28,27 @@ func TestShouldRaiseErrorWhenBothBackendsProvided(t *testing.T) {
 	ValidateAuthenticationBackend(&backendConfig, validator)
 
 	require.Len(t, validator.Errors(), 6)
-	assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file' or 'ldap' backend is configured")
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file', 'ldap', or 'sql' backend is configured")
 	assert.EqualError(t, validator.Errors()[1], "authentication_backend: ldap: option 'address' is required")
 	assert.EqualError(t, validator.Errors()[2], "authentication_backend: ldap: option 'user' is required")
 	assert.EqualError(t, validator.Errors()[3], "authentication_backend: ldap: option 'password' is required")
 	assert.EqualError(t, validator.Errors()[4], "authentication_backend: ldap: option 'users_filter' is required")
 	assert.EqualError(t, validator.Errors()[5], "authentication_backend: ldap: option 'groups_filter' is required")
+}
+
+func TestShouldRaiseErrorWhenSQLAndFileBackendsProvided(t *testing.T) {
+	validator := schema.NewStructValidator()
+	backendConfig := schema.AuthenticationBackend{
+		File: &schema.AuthenticationBackendFile{Path: "/tmp/users.yml"},
+		SQL: &schema.AuthenticationBackendSQL{
+			GeneratedEmailDomain: "eurmtl.me",
+		},
+	}
+
+	ValidateAuthenticationBackend(&backendConfig, validator)
+
+	require.Len(t, validator.Errors(), 1)
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file', 'ldap', or 'sql' backend is configured")
 }
 
 func TestShouldRaiseErrorWhenNoBackendProvided(t *testing.T) {
@@ -43,7 +58,32 @@ func TestShouldRaiseErrorWhenNoBackendProvided(t *testing.T) {
 	ValidateAuthenticationBackend(&backendConfig, validator)
 
 	require.Len(t, validator.Errors(), 1)
-	assert.EqualError(t, validator.Errors()[0], "authentication_backend: you must ensure either the 'file' or 'ldap' authentication backend is configured")
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: you must ensure one of the 'file', 'ldap', or 'sql' authentication backend is configured")
+}
+
+func TestShouldValidateSQLBackend(t *testing.T) {
+	validator := schema.NewStructValidator()
+	backendConfig := schema.AuthenticationBackend{
+		SQL: &schema.AuthenticationBackendSQL{
+			GeneratedEmailDomain: "eurmtl.me",
+		},
+	}
+
+	ValidateAuthenticationBackend(&backendConfig, validator)
+
+	require.Empty(t, validator.Errors())
+}
+
+func TestShouldRequireSQLGeneratedEmailDomain(t *testing.T) {
+	validator := schema.NewStructValidator()
+	backendConfig := schema.AuthenticationBackend{
+		SQL: &schema.AuthenticationBackendSQL{},
+	}
+
+	ValidateAuthenticationBackend(&backendConfig, validator)
+
+	require.Len(t, validator.Errors(), 1)
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: sql: option 'generated_email_domain' is required")
 }
 
 type FileBasedAuthenticationBackend struct {
