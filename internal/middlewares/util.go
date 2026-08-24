@@ -45,7 +45,7 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	providers.SessionProvider = session.NewProvider(config.Session, caCertPool)
 	providers.TOTP = totp.NewTimeBasedProvider(config.TOTP)
 	providers.UserAttributeResolver = expression.NewUserAttributes(config)
-	providers.UserProvider = NewAuthenticationProvider(config, caCertPool)
+	providers.UserProvider = NewAuthenticationProvider(config, caCertPool, providers.StorageProvider)
 
 	var err error
 	if providers.Templates, err = templates.New(templates.Config{EmailTemplatesPath: config.Notifier.TemplatePath}); err != nil {
@@ -83,12 +83,18 @@ func NewProvidersBasic() Providers {
 }
 
 // NewAuthenticationProvider returns a new authentication.UserProvider.
-func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider authentication.UserProvider) {
+func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool, stores ...storage.Provider) (provider authentication.UserProvider) {
 	switch {
 	case config.AuthenticationBackend.File != nil:
 		return authentication.NewFileUserProvider(config.AuthenticationBackend.File)
 	case config.AuthenticationBackend.LDAP != nil:
 		return authentication.NewLDAPUserProvider(config.AuthenticationBackend, caCertPool)
+	case config.AuthenticationBackend.SQL != nil && len(stores) == 1:
+		if store, ok := stores[0].(authentication.SQLUserStore); ok {
+			return authentication.NewSQLUserProvider(config.AuthenticationBackend.SQL, store)
+		}
+
+		return nil
 	default:
 		return nil
 	}

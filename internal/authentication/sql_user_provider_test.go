@@ -84,6 +84,10 @@ type testSQLUserStore struct {
 	users map[string]model.MTLUserDetails
 }
 
+func (s *testSQLUserStore) MigrateMTL(context.Context) error {
+	return nil
+}
+
 func (s *testSQLUserStore) LoadMTLUser(_ context.Context, username string) (model.MTLUserDetails, bool, error) {
 	details, found := s.users[username]
 	return details, found, nil

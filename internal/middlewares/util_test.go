@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
+	"github.com/authelia/authelia/v4/internal/storage"
 )
 
 func TestSetContentType(t *testing.T) {
@@ -41,6 +44,30 @@ func TestSetContentType(t *testing.T) {
 			require.Equal(t, tc.expected, string(ctx.Response.Header.ContentType()))
 		})
 	}
+}
+
+func TestNewAuthenticationProviderSQL(t *testing.T) {
+	config := schema.Configuration{
+		AuthenticationBackend: schema.AuthenticationBackend{
+			SQL: &schema.AuthenticationBackendSQL{GeneratedEmailDomain: "eurmtl.me", Password: schema.DefaultPasswordConfig},
+		},
+		Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}},
+	}
+	store := storage.NewSQLiteProvider(&config)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	provider := NewAuthenticationProvider(&config, nil, store)
+	require.IsType(t, &authentication.SQLUserProvider{}, provider)
+	require.NoError(t, provider.StartupCheck())
+
+	tables, err := store.SchemaTables(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tables, "mtl_schema_migrations")
+}
+
+func TestNewAuthenticationProviderSQLRequiresCompatibleStorage(t *testing.T) {
+	config := schema.Configuration{AuthenticationBackend: schema.AuthenticationBackend{SQL: &schema.AuthenticationBackendSQL{}}}
+	assert.Nil(t, NewAuthenticationProvider(&config, nil))
 }
 
 func TestNewAuthenticationProvider(t *testing.T) {

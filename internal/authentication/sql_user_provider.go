@@ -30,6 +30,10 @@ func (p *SQLUserProvider) StartupCheck() (err error) {
 		return fmt.Errorf("SQL user store is not configured")
 	}
 
+	if err = p.store.MigrateMTL(context.Background()); err != nil {
+		return fmt.Errorf("failed to migrate SQL user store: %w", err)
+	}
+
 	p.hash, err = NewFileCryptoHashFromConfig(p.config.Password)
 	return err
 }

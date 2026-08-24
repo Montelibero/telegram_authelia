@@ -8,6 +8,7 @@ import (
 
 // SQLUserStore is the narrow storage contract required by SQLUserProvider.
 type SQLUserStore interface {
+	MigrateMTL(ctx context.Context) (err error)
 	LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error)
 	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
 }
