@@ -1,17 +1,20 @@
 package model
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // MTLUser is an overlay-owned local user.
 type MTLUser struct {
-	ID           int64     `db:"id"`
-	Username     string    `db:"username"`
-	DisplayName  string    `db:"display_name"`
-	Status       string    `db:"status"`
-	PasswordHash *string   `db:"password_hash"`
-	Version      int       `db:"version"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	ID           int64          `db:"id"`
+	Username     string         `db:"username"`
+	DisplayName  string         `db:"display_name"`
+	Status       string         `db:"status"`
+	PasswordHash sql.NullString `db:"password_hash"`
+	Version      int            `db:"version"`
+	CreatedAt    time.Time      `db:"created_at"`
+	UpdatedAt    time.Time      `db:"updated_at"`
 }
 
 // MTLUserEmail is an email address owned by an overlay user.
@@ -41,6 +44,29 @@ type MTLGroup struct {
 	ID        int64     `db:"id"`
 	Name      string    `db:"name"`
 	CreatedAt time.Time `db:"created_at"`
+}
+
+// MTLUserDetails contains the authentication-facing view of a local user.
+type MTLUserDetails struct {
+	User         MTLUser
+	PrimaryEmail string
+	Groups       []string
+}
+
+// MTLUserImport is one complete user record for transactional imports.
+type MTLUserImport struct {
+	Username     string
+	DisplayName  string
+	PasswordHash *string
+	Emails       []MTLUserImportEmail
+	Groups       []string
+}
+
+// MTLUserImportEmail is an email record supplied during import.
+type MTLUserImportEmail struct {
+	Email    string
+	Primary  bool
+	Verified bool
 }
 
 const (
