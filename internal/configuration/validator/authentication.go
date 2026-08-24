@@ -76,6 +76,8 @@ func validateSQLAuthenticationBackend(config *schema.AuthenticationBackendSQL, v
 	if config.GeneratedEmailDomain == "" {
 		validator.Push(errors.New(errFmtSQLAuthBackendGeneratedEmailDomainNotConfigured))
 	}
+
+	ValidatePasswordConfiguration(&config.Password, validator)
 }
 
 // validateFileAuthenticationBackend validates and updates the file authentication backend configuration.

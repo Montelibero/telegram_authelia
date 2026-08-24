@@ -30,8 +30,9 @@ func TestMTLUserStoreLoad(t *testing.T) {
 		{Username: "telegram", DisplayName: "Telegram Only", Emails: []model.MTLUserImportEmail{{Email: "telegram@eurmtl.me", Primary: true}}},
 	}))
 
-	details, err := provider.LoadMTLUser(ctx, "BUBLIK")
+	details, found, err := provider.LoadMTLUser(ctx, "BUBLIK")
 	require.NoError(t, err)
+	assert.True(t, found)
 	assert.Equal(t, "bublik", details.User.Username)
 	assert.Equal(t, model.MTLUserStatusActive, details.User.Status)
 	assert.True(t, details.User.PasswordHash.Valid)
@@ -39,12 +40,14 @@ func TestMTLUserStoreLoad(t *testing.T) {
 	assert.Equal(t, "bublik@eurmtl.me", details.PrimaryEmail)
 	assert.Equal(t, []string{"admins", "app:grafana"}, details.Groups)
 
-	telegram, err := provider.LoadMTLUser(ctx, "telegram")
+	telegram, found, err := provider.LoadMTLUser(ctx, "telegram")
 	require.NoError(t, err)
+	assert.True(t, found)
 	assert.False(t, telegram.User.PasswordHash.Valid)
 
-	_, err = provider.LoadMTLUser(ctx, "missing")
-	assert.ErrorIs(t, err, ErrMTLUserNotFound)
+	_, found, err = provider.LoadMTLUser(ctx, "missing")
+	require.NoError(t, err)
+	assert.False(t, found)
 }
 
 func TestMTLUserStoreStatusAndPasswordVersion(t *testing.T) {
@@ -56,15 +59,17 @@ func TestMTLUserStoreStatusAndPasswordVersion(t *testing.T) {
 	_, err := provider.db.Exec(`UPDATE mtl_users SET status = 'disabled' WHERE username = 'disabled'`)
 	require.NoError(t, err)
 
-	details, err := provider.LoadMTLUser(ctx, "disabled")
+	details, found, err := provider.LoadMTLUser(ctx, "disabled")
 	require.NoError(t, err)
+	assert.True(t, found)
 	assert.Equal(t, model.MTLUserStatusDisabled, details.User.Status)
 
 	hash := "new-hash"
 	require.NoError(t, provider.UpdateMTLUserPassword(ctx, details.User.ID, &hash, details.User.Version))
 
-	updated, err := provider.LoadMTLUser(ctx, "disabled")
+	updated, found, err := provider.LoadMTLUser(ctx, "disabled")
 	require.NoError(t, err)
+	assert.True(t, found)
 	assert.True(t, updated.User.PasswordHash.Valid)
 	assert.Equal(t, hash, updated.User.PasswordHash.String)
 	assert.Equal(t, details.User.Version+1, updated.User.Version)

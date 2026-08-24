@@ -1,8 +1,16 @@
 package authentication
 
 import (
+	"context"
+
 	"github.com/authelia/authelia/v4/internal/model"
 )
+
+// SQLUserStore is the narrow storage contract required by SQLUserProvider.
+type SQLUserStore interface {
+	LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error)
+	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
+}
 
 // UserProvider is the interface for interacting with the authentication backends.
 type UserProvider interface {

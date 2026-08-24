@@ -13,14 +13,13 @@ import (
 )
 
 var (
-	ErrMTLUserNotFound         = errors.New("MTL user not found")
 	ErrMTLVersionConflict      = errors.New("MTL user version conflict")
 	ErrMTLConflict             = errors.New("MTL user data conflict")
 	ErrMTLPrimaryEmailRequired = errors.New("MTL user requires exactly one primary email")
 )
 
 // LoadMTLUser loads the authentication-facing details for a local user.
-func (p *SQLProvider) LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, err error) {
+func (p *SQLProvider) LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error) {
 	query := p.db.Rebind(`
 SELECT id, username, display_name, status, password_hash, version, created_at, updated_at
 FROM mtl_users
@@ -28,19 +27,19 @@ WHERE username = ?`)
 
 	if err = p.db.GetContext(ctx, &details.User, query, username); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return details, ErrMTLUserNotFound
+			return details, false, nil
 		}
 
-		return details, fmt.Errorf("failed to load MTL user: %w", err)
+		return details, false, fmt.Errorf("failed to load MTL user: %w", err)
 	}
 
 	query = p.db.Rebind(`SELECT email FROM mtl_user_emails WHERE user_id = ? AND is_primary = 1`)
 	if err = p.db.GetContext(ctx, &details.PrimaryEmail, query, details.User.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return details, ErrMTLPrimaryEmailRequired
+			return details, false, ErrMTLPrimaryEmailRequired
 		}
 
-		return details, fmt.Errorf("failed to load MTL user primary email: %w", err)
+		return details, false, fmt.Errorf("failed to load MTL user primary email: %w", err)
 	}
 
 	query = p.db.Rebind(`
@@ -50,10 +49,10 @@ INNER JOIN mtl_group_memberships AS gm ON gm.group_id = g.id
 WHERE gm.user_id = ?
 ORDER BY g.name`)
 	if err = p.db.SelectContext(ctx, &details.Groups, query, details.User.ID); err != nil {
-		return details, fmt.Errorf("failed to load MTL user groups: %w", err)
+		return details, false, fmt.Errorf("failed to load MTL user groups: %w", err)
 	}
 
-	return details, nil
+	return details, true, nil
 }
 
 // UpdateMTLUserPassword updates a password using optimistic version checking.
