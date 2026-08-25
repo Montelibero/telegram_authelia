@@ -31,6 +31,10 @@ git -C "${TEST_ROOT}" switch --quiet release-base
 cp "${SCRIPT_SOURCE}" "${TEST_ROOT}/rebuild-deploy.sh"
 git -C "${TEST_ROOT}" add rebuild-deploy.sh
 git -C "${TEST_ROOT}" commit --quiet -m "test harness"
+
+printf '%s\n' '#!/bin/sh' 'exit 1' > "${TEST_ROOT}/.git/hooks/commit-msg"
+chmod +x "${TEST_ROOT}/.git/hooks/commit-msg"
+
 (
   cd "${TEST_ROOT}"
   bash ./rebuild-deploy.sh >/dev/null
