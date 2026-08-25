@@ -86,6 +86,16 @@ func (s *StateStore) CreateLink(ctx context.Context, username string) (Flow, err
 	return s.create(ctx, "", "link", username)
 }
 
+// CreatePasswordSetup creates a fresh Telegram verification flow for password setup.
+func (s *StateStore) CreatePasswordSetup(ctx context.Context, username string) (Flow, error) {
+	return s.create(ctx, "", "password_setup", username)
+}
+
+// CreatePasswordGrant creates a single-use grant after Telegram verification succeeds.
+func (s *StateStore) CreatePasswordGrant(ctx context.Context, username string) (Flow, error) {
+	return s.create(ctx, "", "password_grant", username)
+}
+
 func (s *StateStore) create(ctx context.Context, returnURL, purpose, username string) (Flow, error) {
 	nonce, err := s.randomValue()
 	if err != nil {

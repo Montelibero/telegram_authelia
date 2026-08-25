@@ -45,6 +45,7 @@ type Providers struct {
 	OpenIDConnect         *oidc.OpenIDConnectProvider
 	Telegram              *telegram.LoginService
 	TelegramLink          *telegram.LinkService
+	TelegramPasswordProof *telegram.PasswordProofService
 	Metrics               metrics.Provider
 	NTP                   *ntp.Provider
 	UserProvider          authentication.UserProvider

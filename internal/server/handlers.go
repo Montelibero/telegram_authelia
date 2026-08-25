@@ -302,6 +302,8 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		r.GET("/api/telegram/link", middlewareElevatedPassword(rateLimitTelegramStart(handlers.TelegramLinkGET)))
 		r.GET("/api/telegram/link/status", middleware1FA(handlers.TelegramLinkStatusGET))
 		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
+		r.GET("/api/self-service/password/telegram", middleware1FA(rateLimitTelegramStart(handlers.TelegramPasswordProofGET)))
+		r.POST("/api/self-service/password", middleware1FA(handlers.SelfServicePasswordSetPOST))
 	}
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))
 

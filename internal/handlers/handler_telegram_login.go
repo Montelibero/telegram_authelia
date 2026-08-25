@@ -34,7 +34,7 @@ func TelegramLoginGET(ctx *middlewares.AutheliaCtx) {
 
 // TelegramCallbackGET completes Telegram OIDC and creates a normal one-factor session.
 func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
-	if ctx.Providers.Telegram == nil && ctx.Providers.TelegramLink == nil {
+	if ctx.Providers.Telegram == nil && ctx.Providers.TelegramLink == nil && ctx.Providers.TelegramPasswordProof == nil {
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 		return
 	}
@@ -50,8 +50,10 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 	var err error
 	if ctx.Providers.Telegram != nil {
 		purpose, err = ctx.Providers.Telegram.Purpose(state)
-	} else {
+	} else if ctx.Providers.TelegramLink != nil {
 		purpose, err = ctx.Providers.TelegramLink.Purpose(state)
+	} else {
+		purpose, err = ctx.Providers.TelegramPasswordProof.Purpose(state)
 	}
 	if err != nil {
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
@@ -59,6 +61,10 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 	}
 	if purpose == "link" {
 		middlewares.RequireFreshPasswordElevation(TelegramLinkCallbackGET)(ctx)
+		return
+	}
+	if purpose == "password_setup" {
+		TelegramPasswordProofCallbackGET(ctx)
 		return
 	}
 	if purpose != "login" || ctx.Providers.Telegram == nil {

@@ -42,3 +42,8 @@ type UserProvider interface {
 
 	Close() (err error)
 }
+
+// SelfServicePasswordProvider is implemented by providers that support password setup without an old password.
+type SelfServicePasswordProvider interface {
+	SetPasswordFromProof(username, newPassword string) (details *UserDetails, err error)
+}

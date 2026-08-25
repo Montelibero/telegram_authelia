@@ -77,7 +77,8 @@ func TestSQLUserProviderStartupReconcilesEnabledApplicationGroups(t *testing.T) 
 
 func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
-		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4, SessionEpoch: 2}, PrimaryEmail: "active@eurmtl.me"},
+		"active":   {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4, SessionEpoch: 2}, PrimaryEmail: "active@eurmtl.me"},
+		"telegram": {User: model.MTLUser{ID: 2, Username: "telegram", Status: model.MTLUserStatusActive, Version: 1, SessionEpoch: 4}, PrimaryEmail: "telegram@eurmtl.me"},
 	}}
 	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
@@ -97,6 +98,11 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 
 	require.NoError(t, provider.UpdatePassword("active", "another-password"))
 	assert.Equal(t, 6, store.users["active"].User.Version)
+
+	proofDetails, err := provider.SetPasswordFromProof("telegram", "first-password")
+	require.NoError(t, err)
+	assert.Equal(t, 5, *proofDetails.SessionEpoch)
+	assert.Error(t, func() error { _, err := provider.SetPasswordFromProof("telegram", "second-password"); return err }())
 }
 
 type testSQLUserStore struct {

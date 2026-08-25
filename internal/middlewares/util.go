@@ -65,6 +65,7 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 			registration := telegram.NewRegistrationService(registrations, config.AuthenticationBackend.SQL.GeneratedEmailDomain)
 			providers.Telegram = telegram.NewLoginServiceWithRegistration(client, states, store, registration)
 			providers.TelegramLink = telegram.NewLinkService(client, states, links)
+			providers.TelegramPasswordProof = telegram.NewPasswordProofService(client, states, links)
 		}
 	}
 

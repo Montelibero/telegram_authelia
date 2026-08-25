@@ -171,6 +171,29 @@ func (p *SQLUserProvider) hashPassword(password string) (string, error) {
 	return digest.Encode(), nil
 }
 
+// SetPasswordFromProof sets the first password after an external identity proof.
+func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword string) (*UserDetails, error) {
+	stored, err := p.loadActiveUser(username)
+	if err != nil {
+		return nil, err
+	}
+	if stored.User.PasswordHash.Valid || strings.TrimSpace(newPassword) == "" {
+		return nil, ErrOperationFailed
+	}
+	encoded, err := p.hashPassword(newPassword)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := p.store.SetMTLSelfServicePassword(context.Background(), username, encoded, stored.User.Version, username)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	stored.User.Version = updated.Version
+	stored.User.SessionEpoch = updated.SessionEpoch
+	stored.User.PasswordHash.Valid = true
+	return sqlUserDetails(stored), nil
+}
+
 // Close is a no-op because the storage provider owns the database connection.
 func (p *SQLUserProvider) Close() error {
 	return nil
