@@ -188,7 +188,7 @@ interface UserDetailsProps {
 
 const UserDetails = function ({ applyDetails, currentUsername, details }: UserDetailsProps) {
     const { t: translate } = useTranslation("settings");
-    const { createErrorNotification } = useNotifications();
+    const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [displayName, setDisplayName] = useState(details.display_name);
     const [status, setStatus] = useState<AdminUserSummary["status"]>(details.status);
     const [confirmation, setConfirmation] = useState("");
@@ -210,6 +210,15 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
             createErrorNotification(translate("Failed to generate setup link"));
         }
     }, [createErrorNotification, details.username, translate]);
+
+    const copyLink = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(setupLink);
+            createSuccessNotification(translate("Setup link copied"));
+        } catch {
+            createErrorNotification(translate("Failed to copy setup link"));
+        }
+    }, [createErrorNotification, createSuccessNotification, setupLink, translate]);
 
     return (
         <Card variant="outlined">
@@ -353,9 +362,7 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
                             <Typography>
                                 {translate("Expires")}: {setupExpires}
                             </Typography>
-                            <Button onClick={() => navigator.clipboard?.writeText(setupLink)}>
-                                {translate("Copy link")}
-                            </Button>
+                            <Button onClick={() => copyLink().catch(console.error)}>{translate("Copy link")}</Button>
                         </Stack>
                     ) : null}
                 </Stack>

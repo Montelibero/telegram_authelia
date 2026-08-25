@@ -186,8 +186,7 @@ func (p *SQLProvider) ApproveMTLRegistration(ctx context.Context, approval model
 		return "", mapMTLConflict("failed to link approved MTL user identity", err)
 	}
 	groups := make(map[string]struct{}, len(approval.Groups))
-	for _, rawGroup := range approval.Groups {
-		group := strings.TrimSpace(rawGroup)
+	for _, group := range approval.Groups {
 		if _, exists := groups[group]; exists {
 			continue
 		}

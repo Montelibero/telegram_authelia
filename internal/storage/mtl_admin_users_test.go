@@ -45,15 +45,18 @@ func TestMTLAdminUserLifecycle(t *testing.T) {
 	}, "")
 	require.NoError(t, err)
 	require.Len(t, details.Emails, 2)
+	assert.Equal(t, 1, details.SessionEpoch)
 
 	details, err = provider.SetMTLAdminPrimaryEmail(ctx, "bublik", "other@example.com", details.Version, "")
 	require.NoError(t, err)
 	assert.Equal(t, "other@example.com", details.PrimaryEmail)
+	assert.Equal(t, 2, details.SessionEpoch)
 
 	details, err = provider.DeleteMTLAdminUserEmail(ctx, "bublik", "bublik@eurmtl.me", details.Version, "")
 	require.NoError(t, err)
 	require.Len(t, details.Emails, 1)
 	assert.Equal(t, "other@example.com", details.Emails[0].Email)
+	assert.Equal(t, 2, details.SessionEpoch)
 	_, err = provider.DeleteMTLAdminUserEmail(ctx, "bublik", "other@example.com", details.Version, "")
 	assert.ErrorIs(t, err, ErrMTLPrimaryEmailRequired)
 }
@@ -117,6 +120,7 @@ func TestMTLAdminUserConflictsRollbackAndIdentityUnlink(t *testing.T) {
 	loaded, err = provider.UnlinkMTLAdminUserIdentity(ctx, "first", "telegram", loaded.Version, "")
 	require.NoError(t, err)
 	assert.Empty(t, loaded.Identities)
+	assert.Equal(t, 1, loaded.SessionEpoch)
 	_, err = provider.UnlinkMTLAdminUserIdentity(ctx, "first", "telegram", loaded.Version, "")
 	assert.ErrorIs(t, err, ErrMTLIdentityNotFound)
 

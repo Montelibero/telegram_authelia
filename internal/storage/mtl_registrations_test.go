@@ -133,6 +133,30 @@ func TestMTLRegistrationApprovalUsesEditedProfileAndExplicitGroups(t *testing.T)
 	assert.Equal(t, []string{"readers"}, details.Groups)
 }
 
+func TestMTLRegistrationApprovalPreservesExactGroupNames(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	require.NoError(t, provider.MigrateMTL(context.Background()))
+	ctx := context.Background()
+	groupName := " team, odd:readers "
+
+	_, err := provider.CreateMTLAdminGroup(ctx, groupName, "")
+	require.NoError(t, err)
+	request, err := provider.UpsertMTLRegistration(ctx, model.MTLRegistrationCandidate{
+		Provider: "telegram", ProviderUserID: "exact-group", ProposedUsername: "exact-group", ProposedEmail: "exact-group@example.com",
+	})
+	require.NoError(t, err)
+
+	username, err := provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{
+		RequestID: request.ID, ExpectedVersion: request.Version, Groups: []string{groupName, groupName},
+	})
+	require.NoError(t, err)
+	details, found, err := provider.LoadMTLUser(ctx, username)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, []string{groupName}, details.Groups)
+}
+
 func TestMTLRegistrationApprovalRollsBackWhenExplicitGroupDoesNotExist(t *testing.T) {
 	provider := newTestSQLiteProvider(t)
 	t.Cleanup(func() { require.NoError(t, provider.Close()) })

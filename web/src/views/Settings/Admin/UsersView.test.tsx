@@ -16,6 +16,7 @@ import UsersView from "@views/Settings/Admin/UsersView";
 
 const notifyError = vi.fn();
 const notifySuccess = vi.fn();
+const writeText = vi.fn();
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@contexts/NotificationsContext", () => ({
@@ -82,6 +83,7 @@ const details = {
 
 beforeEach(() => {
     vi.resetAllMocks();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     vi.mocked(getAdminUsers).mockResolvedValue([summary]);
     vi.mocked(getAdminUser).mockResolvedValue(details);
 });
@@ -148,6 +150,29 @@ it("updates a user and generates a copyable setup link", async () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate setup link" }));
     expect(await screen.findByDisplayValue(/token=secret/)).toBeInTheDocument();
     expect(screen.getByText(/2026/)).toBeInTheDocument();
+    writeText.mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith("https://auth.example/reset-password/step2?token=secret"),
+    );
+    expect(notifySuccess).toHaveBeenCalledWith("Setup link copied");
+});
+
+it("reports a clipboard failure without exposing the setup link", async () => {
+    vi.mocked(generateAdminUserSetupLink).mockResolvedValue({
+        expires_at: "2026-08-25T17:00:00Z",
+        setup_url: "https://auth.example/reset-password/step2?token=secret",
+    });
+    writeText.mockRejectedValue(new Error("clipboard denied"));
+    render(<UsersView currentUsername="admin" />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate setup link" }));
+    await screen.findByDisplayValue(/token=secret/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledWith("Failed to copy setup link"));
+    expect(notifyError).not.toHaveBeenCalledWith(expect.stringContaining("token=secret"));
 });
 
 it("manages emails and unlinks identities", async () => {

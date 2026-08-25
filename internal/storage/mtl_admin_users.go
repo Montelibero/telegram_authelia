@@ -168,7 +168,7 @@ func (p *SQLProvider) AddMTLAdminUserEmail(ctx context.Context, username string,
 			return mapMTLConflict("failed to add MTL admin user email", err)
 		}
 		return nil
-	}, "email.added")
+	}, "email.added", create.Primary)
 }
 
 // SetMTLAdminPrimaryEmail selects an existing email as primary.
@@ -185,7 +185,7 @@ func (p *SQLProvider) SetMTLAdminPrimaryEmail(ctx context.Context, username, ema
 			return fmt.Errorf("failed to select MTL primary email: %w", err)
 		}
 		return nil
-	}, "email.primary_changed")
+	}, "email.primary_changed", true)
 }
 
 // DeleteMTLAdminUserEmail removes a non-primary email.
@@ -205,7 +205,7 @@ func (p *SQLProvider) DeleteMTLAdminUserEmail(ctx context.Context, username, ema
 			return fmt.Errorf("failed to delete MTL admin user email: %w", err)
 		}
 		return nil
-	}, "email.removed")
+	}, "email.removed", false)
 }
 
 // UnlinkMTLAdminUserIdentity removes a provider identity with optimistic concurrency.
@@ -230,7 +230,7 @@ func (p *SQLProvider) UnlinkMTLAdminUserIdentity(ctx context.Context, username, 
 	if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
 		return details, ErrMTLIdentityNotFound
 	}
-	if err = bumpMTLAdminUserVersion(ctx, tx, userID, expectedVersion); err != nil {
+	if err = bumpMTLAdminUserVersion(ctx, tx, userID, expectedVersion, true); err != nil {
 		return details, err
 	}
 	if err = auditMTLAdmin(ctx, tx, actorID, "identity.unlinked", "user", username); err != nil {
@@ -243,7 +243,7 @@ func (p *SQLProvider) UnlinkMTLAdminUserIdentity(ctx context.Context, username, 
 	return details, err
 }
 
-func (p *SQLProvider) mutateMTLAdminEmail(ctx context.Context, username string, expectedVersion int, actor string, mutation func(SQLXTx, int64) error, event string) (details model.MTLAdminUserDetails, err error) {
+func (p *SQLProvider) mutateMTLAdminEmail(ctx context.Context, username string, expectedVersion int, actor string, mutation func(SQLXTx, int64) error, event string, revokeSessions bool) (details model.MTLAdminUserDetails, err error) {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return details, fmt.Errorf("failed to begin MTL admin email mutation: %w", err)
@@ -260,7 +260,7 @@ func (p *SQLProvider) mutateMTLAdminEmail(ctx context.Context, username string, 
 	if err = mutation(tx, userID); err != nil {
 		return details, err
 	}
-	if err = bumpMTLAdminUserVersion(ctx, tx, userID, expectedVersion); err != nil {
+	if err = bumpMTLAdminUserVersion(ctx, tx, userID, expectedVersion, revokeSessions); err != nil {
 		return details, err
 	}
 	if err = auditMTLAdmin(ctx, tx, actorID, event, "user", username); err != nil {
@@ -290,8 +290,12 @@ func loadMTLAdminUserVersion(ctx context.Context, tx SQLXTx, username string, ex
 	return row.ID, nil
 }
 
-func bumpMTLAdminUserVersion(ctx context.Context, tx SQLXTx, userID int64, expectedVersion int) error {
-	result, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND version = ?`), userID, expectedVersion)
+func bumpMTLAdminUserVersion(ctx context.Context, tx SQLXTx, userID int64, expectedVersion int, revokeSessions bool) error {
+	epochIncrement := 0
+	if revokeSessions {
+		epochIncrement = 1
+	}
+	result, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET version = version + 1, session_epoch = session_epoch + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND version = ?`), epochIncrement, userID, expectedVersion)
 	if err != nil {
 		return fmt.Errorf("failed to bump MTL admin user version: %w", err)
 	}
