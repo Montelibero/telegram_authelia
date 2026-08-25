@@ -1,0 +1,29 @@
+name: authelia-mtl
+
+services:
+  authelia:
+    image: ghcr.io/montelibero/authelia:latest
+    container_name: authelia-mtl
+    restart: unless-stopped
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=change_me
+      - AUTHELIA_SESSION_SECRET=change_me
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=change_me
+      - AUTHELIA_TELEGRAM_CLIENT_SECRET=change_me
+    volumes:
+      - authelia-config:/config
+    expose:
+      - "9091"
+    networks:
+      - reverse-proxy
+
+volumes:
+  authelia-config:
+    external: true
+    name: change_me_existing_authelia_config_volume
+
+networks:
+  reverse-proxy:
+    external: true
+    name: change_me_existing_reverse_proxy_network

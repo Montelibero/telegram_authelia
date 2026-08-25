@@ -6,7 +6,7 @@ Replace the example paths and container names with the deployment's actual value
 
 ## Preconditions
 
-- The custom image is built from `local/auth-overlay` on the pinned stable baseline.
+- The custom image is `ghcr.io/montelibero/authelia:latest`, built only from the assembled `deploy` branch on the pinned stable baseline.
 - The current upstream deployment is healthy with the file authentication backend.
 - `/config/users_database.yml` is the exact file currently used by Authelia.
 - SQLite storage is configured at `/config/db.sqlite3`.
@@ -22,16 +22,15 @@ The generated domain is only a fallback. An explicit email from `users_database.
 
 ## 1. Back up and verify SQLite
 
-Stop Authelia briefly so the backup and source files describe one cutover point, then create a SQLite online backup:
+Stop Authelia so the backup and source files describe one cutover point, then make a byte-for-byte SQLite copy:
 
 ```sh
 mkdir -p /config/backups
-sqlite3 /config/db.sqlite3 ".backup '/config/backups/authelia-before-sql-users.sqlite3'"
-sqlite3 /config/backups/authelia-before-sql-users.sqlite3 'PRAGMA integrity_check;'
+cp /config/db.sqlite3 /config/backups/authelia-before-sql-users.sqlite3
 sha256sum /config/db.sqlite3 /config/backups/authelia-before-sql-users.sqlite3 /config/users_database.yml
 ```
 
-`PRAGMA integrity_check` must print `ok`. Store the observed checksums and user counts in a private operations log; do not commit them.
+The source and copied SQLite checksums must match. The runtime image does not include the `sqlite3` utility; use `authelia storage schema-info` after opening the copied database rather than assuming it exists in the container. Store the observed checksums and user counts in a private operations log; do not commit them.
 
 ## 2. Run the import preview
 
@@ -60,6 +59,12 @@ sqlite3 /config/db.sqlite3 'SELECT status, COUNT(*) FROM mtl_users GROUP BY stat
 sqlite3 /config/db.sqlite3 'SELECT COUNT(*) FROM mtl_user_emails;'
 sqlite3 /config/db.sqlite3 'SELECT COUNT(*) FROM mtl_groups;'
 sqlite3 /config/db.sqlite3 'SELECT COUNT(*) FROM mtl_group_memberships;'
+```
+
+The SQL queries are optional diagnostics and require a separately available `sqlite3` utility. They are not runtime-image commands. The required image-native check is:
+
+```sh
+authelia --config /config/configuration.yml storage schema-info
 ```
 
 ## 4. Start the SQL backend
@@ -94,7 +99,7 @@ The upstream image ignores the overlay-owned `mtl_*` tables, so restoring the da
 
 ```sh
 cp /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3
-sqlite3 /config/db.sqlite3 'PRAGMA integrity_check;'
+authelia --config /config/configuration.yml storage schema-info
 ```
 
 Do not delete the failed database or YAML source during rollback. Preserve both for diagnosis.
