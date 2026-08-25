@@ -65,6 +65,36 @@ func TestLoginServiceRejectsUnknownAndDisabledUsers(t *testing.T) {
 	}
 }
 
+func TestLoginServiceReturnsPendingRegistrationWithoutUser(t *testing.T) {
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x43}, 512)), []byte("test secret"), newFakeStateReplayStore())
+	registrations := &fakeRegistrationStore{}
+	service := NewLoginServiceWithRegistration(
+		&fakeLoginClient{identity: Identity{ProviderUserID: "1", Username: "bublik"}}, states,
+		&fakeIdentityUserStore{}, NewRegistrationService(registrations, "eurmtl.me"),
+	)
+	_, state, err := service.Begin(context.Background(), "")
+	require.NoError(t, err)
+
+	result, err := service.Complete(context.Background(), state, "code")
+	require.NoError(t, err)
+	assert.Equal(t, model.MTLRegistrationStatusPending, result.RegistrationStatus)
+	assert.Empty(t, result.Details.User.Username)
+}
+
+func TestLoginServiceReturnsRegistrationStorageError(t *testing.T) {
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x44}, 512)), []byte("test secret"), newFakeStateReplayStore())
+	storeErr := errors.New("registration storage failed")
+	service := NewLoginServiceWithRegistration(
+		&fakeLoginClient{identity: Identity{ProviderUserID: "1", Username: "bublik"}}, states,
+		&fakeIdentityUserStore{}, NewRegistrationService(&fakeRegistrationStore{err: storeErr}, "eurmtl.me"),
+	)
+	_, state, err := service.Begin(context.Background(), "")
+	require.NoError(t, err)
+
+	_, err = service.Complete(context.Background(), state, "code")
+	assert.ErrorIs(t, err, storeErr)
+}
+
 type fakeLoginClient struct {
 	identity Identity
 	err      error

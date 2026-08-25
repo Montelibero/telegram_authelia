@@ -30,21 +30,28 @@ type IdentityUserStore interface {
 
 // LoginResult is a verified active local user and its state-bound return URL.
 type LoginResult struct {
-	Details   model.MTLUserDetails
-	Identity  Identity
-	ReturnURL string
+	Details            model.MTLUserDetails
+	Identity           Identity
+	ReturnURL          string
+	RegistrationStatus model.MTLRegistrationStatus
 }
 
 // LoginService coordinates state, OIDC verification, and local identity resolution.
 type LoginService struct {
-	client loginClient
-	states *StateStore
-	users  IdentityUserStore
+	client        loginClient
+	states        *StateStore
+	users         IdentityUserStore
+	registrations *RegistrationService
 }
 
 // NewLoginService constructs a Telegram login service.
 func NewLoginService(client loginClient, states *StateStore, users IdentityUserStore) *LoginService {
 	return &LoginService{client: client, states: states, users: users}
+}
+
+// NewLoginServiceWithRegistration constructs a login service that captures unknown identities for approval.
+func NewLoginServiceWithRegistration(client loginClient, states *StateStore, users IdentityUserStore, registrations *RegistrationService) *LoginService {
+	return &LoginService{client: client, states: states, users: users, registrations: registrations}
 }
 
 // Begin creates a state-bound flow and returns its authorization URL and state.
@@ -81,6 +88,13 @@ func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginR
 		return LoginResult{}, err
 	}
 	if !found {
+		if s.registrations != nil {
+			request, registerErr := s.registrations.Register(ctx, identity)
+			if registerErr != nil {
+				return LoginResult{}, registerErr
+			}
+			return LoginResult{Identity: identity, ReturnURL: flow.ReturnURL, RegistrationStatus: request.Status}, nil
+		}
 		return LoginResult{}, ErrIdentityNotLinked
 	}
 	if details.User.Status != model.MTLUserStatusActive {
