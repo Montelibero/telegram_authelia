@@ -72,6 +72,31 @@ func TestTelegramCallbackRejectsFlowFromAnotherBrowser(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusBadRequest, mock.Ctx.Response.StatusCode())
 }
 
+func TestTelegramCallbackRedirectsPendingRegistrationWithoutCreatingSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{})
+	defer mock.Close()
+	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321", Username: "bublik"}}
+	store := &handlerTelegramStore{found: false}
+	registrations := telegram.NewRegistrationService(&handlerTelegramRegistrationStore{}, "eurmtl.me")
+	mock.Ctx.Providers.Telegram = telegram.NewLoginServiceWithRegistration(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store, registrations)
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/login?rd=/portal")
+
+	TelegramLoginGET(mock.Ctx)
+	var stateCookie fasthttp.Cookie
+	require.NoError(t, stateCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie(telegramStateCookieName(client.flow.State))))
+	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/callback?state=" + client.flow.State + "&code=code")
+	TelegramCallbackGET(mock.Ctx)
+
+	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
+	assert.Equal(t, "https://auth.example.com/?telegram_status=pending", string(mock.Ctx.Response.Header.Peek("Location")))
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.Equal(t, authentication.NotAuthenticated, userSession.AuthenticationLevel(false))
+}
+
 type handlerTelegramClient struct {
 	flow     telegram.Flow
 	identity telegram.Identity
@@ -86,10 +111,22 @@ func (c *handlerTelegramClient) Exchange(context.Context, string, telegram.Flow)
 	return c.identity, nil
 }
 
-type handlerTelegramStore struct{ details model.MTLUserDetails }
+type handlerTelegramStore struct {
+	details model.MTLUserDetails
+	found   bool
+}
 
 func (s *handlerTelegramStore) LoadMTLUserByIdentity(context.Context, string, string) (model.MTLUserDetails, bool, error) {
+	if !s.found && s.details.User.Username == "" {
+		return model.MTLUserDetails{}, false, nil
+	}
 	return s.details, true, nil
+}
+
+type handlerTelegramRegistrationStore struct{}
+
+func (s *handlerTelegramRegistrationStore) UpsertMTLRegistration(_ context.Context, candidate model.MTLRegistrationCandidate) (model.MTLRegistrationRequest, error) {
+	return model.MTLRegistrationRequest{Provider: candidate.Provider, ProviderUserID: candidate.ProviderUserID, Status: model.MTLRegistrationStatusPending}, nil
 }
 
 type handlerStateReplayStore struct {

@@ -17,6 +17,8 @@ type Identity struct {
 	ProviderUserID string
 	Username       string
 	Name           string
+	Email          string
+	EmailVerified  bool
 }
 
 // Client implements Telegram's OpenID Connect Authorization Code flow.
@@ -48,7 +50,7 @@ func NewClient(ctx context.Context, config schema.Telegram, httpClient *http.Cli
 			ClientSecret: config.ClientSecret,
 			Endpoint:     provider.Endpoint(),
 			RedirectURL:  config.CallbackURL.String(),
-			Scopes:       []string{coreoidc.ScopeOpenID, "profile"},
+			Scopes:       []string{coreoidc.ScopeOpenID, "profile", "email"},
 		},
 		verifier:   provider.Verifier(&coreoidc.Config{ClientID: config.ClientID}),
 		httpClient: httpClient,
@@ -83,10 +85,12 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 	}
 
 	claims := struct {
-		Subject  string `json:"sub"`
-		Nonce    string `json:"nonce"`
-		Username string `json:"preferred_username"`
-		Name     string `json:"name"`
+		Subject       string `json:"sub"`
+		Nonce         string `json:"nonce"`
+		Username      string `json:"preferred_username"`
+		Name          string `json:"name"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
 	}{}
 	if err = idToken.Claims(&claims); err != nil {
 		return Identity{}, fmt.Errorf("decoding Telegram ID token claims: %w", err)
@@ -100,5 +104,5 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 		return Identity{}, errors.New("Telegram ID token subject is required")
 	}
 
-	return Identity{ProviderUserID: claims.Subject, Username: claims.Username, Name: claims.Name}, nil
+	return Identity{ProviderUserID: claims.Subject, Username: claims.Username, Name: claims.Name, Email: claims.Email, EmailVerified: claims.EmailVerified}, nil
 }

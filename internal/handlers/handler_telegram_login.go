@@ -79,6 +79,10 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		}
 		return
 	}
+	if result.RegistrationStatus != "" {
+		ctx.Redirect("/?telegram_status="+string(result.RegistrationStatus), fasthttp.StatusFound)
+		return
+	}
 
 	details := &authentication.UserDetails{
 		Username:    result.Details.User.Username,

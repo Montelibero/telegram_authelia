@@ -31,7 +31,7 @@ func TestClientAuthorizationURL(t *testing.T) {
 
 	assert.Equal(t, issuer.server.URL+"/auth", parsed.Scheme+"://"+parsed.Host+parsed.Path)
 	assert.Equal(t, "code", parsed.Query().Get("response_type"))
-	assert.Equal(t, "openid profile", parsed.Query().Get("scope"))
+	assert.Equal(t, "openid profile email", parsed.Query().Get("scope"))
 	assert.Equal(t, flow.State, parsed.Query().Get("state"))
 	assert.Equal(t, flow.Nonce, parsed.Query().Get("nonce"))
 	assert.Equal(t, "S256", parsed.Query().Get("code_challenge_method"))
@@ -40,10 +40,12 @@ func TestClientAuthorizationURL(t *testing.T) {
 
 func TestClientExchangeVerifiesTokenAndExtractsStableIdentity(t *testing.T) {
 	issuer := newMockIssuer(t, tokenClaims{
-		subject:  "987654321",
-		username: "bublik",
-		name:     "Bublik",
-		nonce:    "expected-nonce",
+		subject:       "987654321",
+		username:      "bublik",
+		name:          "Bublik",
+		email:         "bublik@example.com",
+		emailVerified: true,
+		nonce:         "expected-nonce",
 	})
 	client := newTestClient(t, issuer)
 	flow := Flow{Nonce: "expected-nonce", CodeVerifier: "expected-verifier"}
@@ -54,6 +56,8 @@ func TestClientExchangeVerifiesTokenAndExtractsStableIdentity(t *testing.T) {
 	assert.Equal(t, "987654321", identity.ProviderUserID)
 	assert.Equal(t, "bublik", identity.Username)
 	assert.Equal(t, "Bublik", identity.Name)
+	assert.Equal(t, "bublik@example.com", identity.Email)
+	assert.True(t, identity.EmailVerified)
 	assert.True(t, issuer.sawTokenRequest)
 	assert.Equal(t, flow.CodeVerifier, issuer.codeVerifier)
 }
@@ -104,6 +108,8 @@ type tokenClaims struct {
 	subject          string
 	username         string
 	name             string
+	email            string
+	emailVerified    bool
 	nonce            string
 	issuer           string
 	audience         string
@@ -194,6 +200,8 @@ func (m *mockIssuer) signToken() (string, error) {
 		"nonce":              m.claims.nonce,
 		"preferred_username": m.claims.username,
 		"name":               m.claims.name,
+		"email":              m.claims.email,
+		"email_verified":     m.claims.emailVerified,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "telegram-test"
