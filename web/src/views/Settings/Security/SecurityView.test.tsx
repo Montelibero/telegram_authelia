@@ -53,6 +53,10 @@ vi.mock("@views/Settings/Security/ChangePasswordDialog", () => ({
     default: () => <div data-testid="change-password-dialog" />,
 }));
 
+vi.mock("@components/TelegramAccountLink", () => ({
+    default: ({ enabled }: { enabled: boolean }) => <div data-testid="telegram-account-link">{String(enabled)}</div>,
+}));
+
 it("renders user info and change password button", () => {
     render(<SecurityView />);
     expect(screen.getByText(/John Doe/)).toBeInTheDocument();
@@ -64,4 +68,10 @@ it("renders dialogs", () => {
     expect(screen.getByTestId("identity-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("second-factor-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("change-password-dialog")).toBeInTheDocument();
+});
+
+it("renders Telegram account linking when enabled", () => {
+    document.body.dataset.telegramlogin = "true";
+    render(<SecurityView />);
+    expect(screen.getByTestId("telegram-account-link")).toHaveTextContent("true");
 });

@@ -11,6 +11,7 @@ import (
 
 	"github.com/authelia/authelia/v4/internal/authorization"
 	"github.com/authelia/authelia/v4/internal/mocks"
+	"github.com/authelia/authelia/v4/internal/model"
 	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/telegram"
 )
@@ -50,9 +51,28 @@ func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
 	assert.Equal(t, "bublik", store.unlinkedUsername)
 }
 
+func TestTelegramLinkStatusReturnsCurrentUsersIdentity(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com"})
+	defer mock.Close()
+	providerUsername := "bublik_tg"
+	store := &handlerIdentityLinkStore{identity: model.MTLUserIdentity{ProviderUserID: "987654321", ProviderUsername: &providerUsername}, found: true}
+	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(&handlerTelegramClient{}, telegram.NewStateStore(time.Minute, nil, nil), store)
+
+	TelegramLinkStatusGET(mock.Ctx)
+
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.JSONEq(t, `{"status":"OK","data":{"linked":true,"provider_user_id":"987654321","provider_username":"bublik_tg"}}`, string(mock.Ctx.Response.Body()))
+}
+
 type handlerIdentityLinkStore struct {
 	linkedUsername   string
 	unlinkedUsername string
+	identity         model.MTLUserIdentity
+	found            bool
+}
+
+func (s *handlerIdentityLinkStore) LoadMTLUserIdentity(_ context.Context, username, provider string) (model.MTLUserIdentity, bool, error) {
+	return s.identity, s.found, nil
 }
 
 func (s *handlerIdentityLinkStore) LinkMTLUserIdentity(_ context.Context, username, provider, providerUserID, providerUsername string) error {

@@ -266,6 +266,7 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		r.GET("/api/telegram/login", middlewareAPI(handlers.TelegramLoginGET))
 		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
 		r.GET("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramLinkGET))
+		r.GET("/api/telegram/link/status", middleware1FA(handlers.TelegramLinkStatusGET))
 		r.GET("/api/telegram/link/callback", middlewareElevatedPassword(handlers.TelegramLinkCallbackGET))
 		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
 	}

@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/authelia/authelia/v4/internal/model"
 )
 
 func TestLinkServiceBindsCallbackToLocalUser(t *testing.T) {
@@ -40,6 +42,10 @@ type fakeLinkStore struct {
 	username         string
 	providerUserID   string
 	unlinkedUsername string
+}
+
+func (s *fakeLinkStore) LoadMTLUserIdentity(context.Context, string, string) (model.MTLUserIdentity, bool, error) {
+	return model.MTLUserIdentity{}, false, nil
 }
 
 func (s *fakeLinkStore) LinkMTLUserIdentity(_ context.Context, username, provider, providerUserID, providerUsername string) error {

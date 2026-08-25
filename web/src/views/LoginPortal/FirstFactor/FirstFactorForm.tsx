@@ -1,6 +1,5 @@
 import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import TelegramIcon from "@mui/icons-material/Telegram";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import {
@@ -21,6 +20,7 @@ import { BroadcastChannel } from "broadcast-channel";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
+import TelegramLoginButton from "@components/TelegramLoginButton";
 import { ResetPasswordStep1Route } from "@constants/Routes";
 import { RedirectionURL, RequestMethod } from "@constants/SearchParams";
 import { useNotifications } from "@contexts/NotificationsContext";
@@ -30,7 +30,6 @@ import { useQueryParam } from "@hooks/QueryParam";
 import LoginLayout from "@layouts/LoginLayout";
 import { IsCapsLockModified } from "@services/CapsLock";
 import { postFirstFactor } from "@services/Password";
-import { getTelegramLoginURL } from "@services/Telegram";
 import PasskeyForm from "@views/LoginPortal/FirstFactor/PasskeyForm";
 
 export interface Props {
@@ -372,17 +371,7 @@ const FirstFactorForm = function (props: Props) {
                     </Grid>
                     {props.telegramLogin ? (
                         <Grid size={{ xs: 12 }}>
-                            <Button
-                                id="telegram-login-button"
-                                component="a"
-                                href={getTelegramLoginURL()}
-                                variant="outlined"
-                                fullWidth={true}
-                                startIcon={<TelegramIcon />}
-                                disabled={disabled}
-                            >
-                                {translate("Sign in with Telegram")}
-                            </Button>
+                            <TelegramLoginButton enabled={props.telegramLogin} disabled={disabled} />
                         </Grid>
                     ) : null}
                     {props.passkeyLogin ? (

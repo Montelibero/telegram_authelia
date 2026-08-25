@@ -3,11 +3,14 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Box, Button, Container, List, ListItem, Paper, Stack, Tooltip, Typography, useTheme } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
+import TelegramAccountLink from "@components/TelegramAccountLink";
 import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
 import { useUserInfoGET } from "@hooks/UserInfo";
 import { Configuration } from "@models/Configuration";
+import { getTelegramLinkURL } from "@services/Telegram";
 import { UserSessionElevation, getUserSessionElevation } from "@services/UserSessionElevation";
+import { getTelegramLogin } from "@utils/Configuration";
 import IdentityVerificationDialog from "@views/Settings/Common/IdentityVerificationDialog";
 import SecondFactorDialog from "@views/Settings/Common/SecondFactorDialog";
 import ChangePasswordDialog from "@views/Settings/Security/ChangePasswordDialog";
@@ -51,12 +54,14 @@ const SettingsView = function () {
     const [dialogIVOpening, setDialogIVOpening] = useState(false);
     const [dialogPWChangeOpen, setDialogPWChangeOpen] = useState(false);
     const [dialogPWChangeOpening, setDialogPWChangeOpening] = useState(false);
+    const [dialogTelegramLinkOpening, setDialogTelegramLinkOpening] = useState(false);
     const [configuration, fetchConfiguration, , fetchConfigurationError] = useConfiguration();
 
     const handleResetStateOpening = () => {
         setDialogSFOpening(false);
         setDialogIVOpening(false);
         setDialogPWChangeOpening(false);
+        setDialogTelegramLinkOpening(false);
     };
 
     const handleResetState = useCallback(() => {
@@ -69,6 +74,11 @@ const SettingsView = function () {
     const handleOpenChangePWDialog = useCallback(() => {
         handleResetStateOpening();
         setDialogPWChangeOpen(true);
+    }, []);
+
+    const handleOpenTelegramLink = useCallback(() => {
+        handleResetStateOpening();
+        window.location.assign(getTelegramLinkURL());
     }, []);
 
     const handleSFDialogClosed = (ok: boolean, changed: boolean) => {
@@ -90,6 +100,8 @@ const SettingsView = function () {
                             setElevation(undefined);
                             if (dialogPWChangeOpening) {
                                 handleOpenChangePWDialog();
+                            } else if (dialogTelegramLinkOpening) {
+                                handleOpenTelegramLink();
                             }
                         } else {
                             setDialogIVOpening(true);
@@ -106,6 +118,8 @@ const SettingsView = function () {
                 setElevation(undefined);
                 if (dialogPWChangeOpening) {
                     handleOpenChangePWDialog();
+                } else if (dialogTelegramLinkOpening) {
+                    handleOpenTelegramLink();
                 }
             } else {
                 setDialogIVOpening(true);
@@ -132,9 +146,17 @@ const SettingsView = function () {
             setElevation(undefined);
             if (dialogPWChangeOpening) {
                 handleOpenChangePWDialog();
+            } else if (dialogTelegramLinkOpening) {
+                handleOpenTelegramLink();
             }
         },
-        [dialogPWChangeOpening, handleOpenChangePWDialog, handleResetState],
+        [
+            dialogPWChangeOpening,
+            dialogTelegramLinkOpening,
+            handleOpenChangePWDialog,
+            handleOpenTelegramLink,
+            handleResetState,
+        ],
     );
 
     const handleIVDialogOpened = () => {
@@ -156,6 +178,11 @@ const SettingsView = function () {
     const handleChangePassword = () => {
         setDialogPWChangeOpening(true);
 
+        handleElevation();
+    };
+
+    const handleConnectTelegram = () => {
+        setDialogTelegramLinkOpening(true);
         handleElevation();
     };
 
@@ -263,6 +290,7 @@ const SettingsView = function () {
                                 translate={translate}
                                 handleChangePassword={handleChangePassword}
                             />
+                            <TelegramAccountLink enabled={getTelegramLogin()} onConnect={handleConnectTelegram} />
                         </Box>
                     </Stack>
                 </Paper>
