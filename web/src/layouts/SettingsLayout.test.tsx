@@ -13,6 +13,9 @@ vi.mock("@constants/constants", () => ({
 }));
 
 vi.mock("@constants/Routes", () => ({
+    AdminGroupsSubRoute: "/admin/groups",
+    AdminPendingSubRoute: "/admin/pending",
+    AdminUsersSubRoute: "/admin/users",
     IndexRoute: "/",
     SecuritySubRoute: "/security",
     SettingsRoute: "/settings",
@@ -57,6 +60,17 @@ it("renders navigation items in drawer", async () => {
     expect(screen.getByText("Security")).toBeInTheDocument();
     expect(screen.getByText("Two-Factor Authentication")).toBeInTheDocument();
     expect(screen.getByText("Close")).toBeInTheDocument();
+    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+});
+
+it("renders administrator navigation for administrators", async () => {
+    await act(async () => {
+        render(<SettingsLayout administrator />);
+    });
+
+    expect(screen.getByText("Users")).toBeInTheDocument();
+    expect(screen.getByText("Pending registrations")).toBeInTheDocument();
+    expect(screen.getByText("Groups")).toBeInTheDocument();
 });
 
 it("sets the document title", async () => {

@@ -43,6 +43,13 @@ export const UserInfoPath = basePath + "/api/user/info";
 export const UserInfo2FAMethodPath = basePath + "/api/user/info/2fa_method";
 export const UserSessionElevationPath = basePath + "/api/user/session/elevation";
 
+export const AdminUsersPath = basePath + "/api/admin/users";
+export const AdminUserPath = basePath + "/api/admin/user";
+export const AdminUserEmailPath = basePath + "/api/admin/users/email";
+export const AdminUserPrimaryEmailPath = basePath + "/api/admin/users/email/primary";
+export const AdminUserIdentityPath = basePath + "/api/admin/users/identity";
+export const AdminUserSetupLinkPath = basePath + "/api/admin/users/setup-link";
+
 export const ConfigurationPath = basePath + "/api/configuration";
 export const PasswordPolicyConfigurationPath = basePath + "/api/configuration/password-policy";
 

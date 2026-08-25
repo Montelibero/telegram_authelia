@@ -20,24 +20,24 @@ type MTLUser struct {
 
 // MTLUserEmail is an email address owned by an overlay user.
 type MTLUserEmail struct {
-	ID        int64     `db:"id"`
-	UserID    int64     `db:"user_id"`
-	Email     string    `db:"email"`
-	Primary   bool      `db:"is_primary"`
-	Verified  bool      `db:"verified"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	ID        int64     `db:"id" json:"id"`
+	UserID    int64     `db:"user_id" json:"user_id"`
+	Email     string    `db:"email" json:"email"`
+	Primary   bool      `db:"is_primary" json:"primary"`
+	Verified  bool      `db:"verified" json:"verified"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 // MTLUserIdentity links a local user to a stable external identity.
 type MTLUserIdentity struct {
-	ID               int64     `db:"id"`
-	UserID           int64     `db:"user_id"`
-	Provider         string    `db:"provider"`
-	ProviderUserID   string    `db:"provider_user_id"`
-	ProviderUsername *string   `db:"provider_username"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	ID               int64     `db:"id" json:"id"`
+	UserID           int64     `db:"user_id" json:"user_id"`
+	Provider         string    `db:"provider" json:"provider"`
+	ProviderUserID   string    `db:"provider_user_id" json:"provider_user_id"`
+	ProviderUsername *string   `db:"provider_username" json:"provider_username,omitempty"`
+	CreatedAt        time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at" json:"updated_at"`
 }
 
 // MTLGroup is an overlay-owned Authelia group.
