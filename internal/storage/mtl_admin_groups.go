@@ -14,6 +14,33 @@ var (
 	ErrMTLMembershipNotFound = errors.New("MTL group membership not found")
 )
 
+// ReconcileMTLGroups creates configured groups which do not exist yet. Existing groups and memberships are unchanged.
+func (p *SQLProvider) ReconcileMTLGroups(ctx context.Context, groups []string) (err error) {
+	query := p.db.Rebind(reconcileMTLGroupQuery(p.name))
+
+	seen := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+
+		if _, err = p.db.ExecContext(ctx, query, group); err != nil {
+			return fmt.Errorf("failed to create reconciled MTL group %q: %w", group, err)
+		}
+	}
+
+	return nil
+}
+
+func reconcileMTLGroupQuery(provider string) string {
+	if provider == providerMySQL {
+		return `INSERT INTO mtl_groups (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name`
+	}
+
+	return `INSERT INTO mtl_groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`
+}
+
 // ListMTLAdminGroups returns groups and membership counts in name order.
 func (p *SQLProvider) ListMTLAdminGroups(ctx context.Context) (groups []model.MTLAdminGroupSummary, err error) {
 	query := `SELECT g.name, g.version, COUNT(gm.user_id) AS user_count, g.updated_at FROM mtl_groups g LEFT JOIN mtl_group_memberships gm ON gm.group_id = g.id GROUP BY g.id, g.name, g.version, g.updated_at ORDER BY g.name`

@@ -279,7 +279,14 @@ func getKeyNameFromTagAndPrefix(prefix, name string, isSlice, isMap bool) string
 	nameParts := strings.SplitN(name, ",", 2)
 
 	if prefix == "" {
-		return nameParts[0]
+		switch {
+		case isMap:
+			return nameParts[0] + ".*"
+		case isSlice:
+			return nameParts[0] + "[]"
+		default:
+			return nameParts[0]
+		}
 	}
 
 	if len(nameParts) == 2 && nameParts[1] == "squash" {

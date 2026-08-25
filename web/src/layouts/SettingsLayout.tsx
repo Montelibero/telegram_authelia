@@ -7,6 +7,7 @@ import {
     HowToReg,
     ManageAccounts,
     Menu,
+    Rule,
     Security,
     SystemSecurityUpdateGood,
 } from "@mui/icons-material";
@@ -30,6 +31,7 @@ import { EncodedName } from "@constants/constants";
 import {
     AdminGroupsSubRoute,
     AdminPendingSubRoute,
+    AdminPermissionsSubRoute,
     AdminUsersSubRoute,
     IndexRoute,
     SecuritySubRoute,
@@ -177,6 +179,13 @@ const navItems: NavItem[] = [
         keyname: "admin-groups",
         pathname: `${SettingsRoute}${AdminGroupsSubRoute}`,
         text: "Groups",
+    },
+    {
+        administrator: true,
+        icon: <Rule color={"primary"} />,
+        keyname: "admin-permissions",
+        pathname: `${SettingsRoute}${AdminPermissionsSubRoute}`,
+        text: "Permissions",
     },
     {
         icon: <SystemSecurityUpdateGood color={"primary"} />,

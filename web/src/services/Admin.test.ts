@@ -9,15 +9,18 @@ import {
     deleteAdminGroup,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminApplications,
     getAdminGroup,
     getAdminGroups,
     getAdminRegistration,
     getAdminRegistrations,
     getAdminUser,
     getAdminUsers,
+    grantAdminApplicationUser,
     rejectAdminRegistration,
     removeAdminGroupUser,
     renameAdminGroup,
+    revokeAdminApplicationUser,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
@@ -40,6 +43,36 @@ it("loads users and user details", async () => {
     expect(mockedAxios).toHaveBeenNthCalledWith(2, {
         method: "GET",
         url: "/api/admin/user?username=alice+%26+bob",
+    });
+});
+
+it("loads and mutates application permissions", async () => {
+    const applications = [
+        {
+            domain: "grafana.example.com",
+            group: "app:grafana",
+            group_version: 3,
+            name: "Grafana",
+            slug: "grafana",
+            users: [],
+        },
+    ];
+    mockedAxios.mockResolvedValue({ data: { data: applications, status: "OK" }, status: 200 });
+
+    await expect(getAdminApplications()).resolves.toEqual(applications);
+    await expect(grantAdminApplicationUser("grafana", "alice", 3)).resolves.toEqual(applications);
+    await expect(revokeAdminApplicationUser("grafana", "alice", 4)).resolves.toEqual(applications);
+
+    expect(mockedAxios).toHaveBeenNthCalledWith(1, { method: "GET", url: "/api/admin/applications" });
+    expect(mockedAxios).toHaveBeenNthCalledWith(2, {
+        data: { expected_version: 3, slug: "grafana", username: "alice" },
+        method: "PUT",
+        url: "/api/admin/application/user",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(3, {
+        data: { expected_version: 4, slug: "grafana", username: "alice" },
+        method: "DELETE",
+        url: "/api/admin/application/user",
     });
 });
 

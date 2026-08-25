@@ -19,6 +19,7 @@ export const SecuritySubRoute: string = "/security";
 export const AdminUsersSubRoute: string = "/admin/users";
 export const AdminPendingSubRoute: string = "/admin/pending";
 export const AdminGroupsSubRoute: string = "/admin/groups";
+export const AdminPermissionsSubRoute: string = "/admin/permissions";
 
 export const ConsentRoute: string = "/consent";
 export const ConsentCompletionSubRoute: string = "/completion";

@@ -1,6 +1,8 @@
 import axios, { AxiosRequestConfig } from "axios";
 
 import {
+    AdminApplicationUserPath,
+    AdminApplicationsPath,
     AdminGroupPath,
     AdminGroupUserPath,
     AdminGroupsPath,
@@ -18,6 +20,24 @@ import {
     hasServiceError,
     toData,
 } from "@services/Api";
+
+export interface AdminApplicationUser {
+    username: string;
+    display_name: string;
+    status: "active" | "disabled";
+    version: number;
+    primary_email: string;
+    granted: boolean;
+}
+
+export interface AdminApplication {
+    slug: string;
+    name: string;
+    domain: string;
+    group: string;
+    group_version: number;
+    users: AdminApplicationUser[];
+}
 
 export interface AdminUserSummary {
     username: string;
@@ -96,6 +116,7 @@ export interface AdminGroupSummary {
     version: number;
     user_count: number;
     updated_at: string;
+    managed: boolean;
 }
 
 export interface AdminGroupDetails extends AdminGroupSummary {
@@ -279,5 +300,25 @@ export function removeAdminGroupUser(name: string, username: string, expectedVer
         data: { confirm_username: confirmUsername, expected_version: expectedVersion, name, username },
         method: "DELETE",
         url: AdminGroupUserPath,
+    });
+}
+
+export function getAdminApplications() {
+    return adminRequest<AdminApplication[]>({ method: "GET", url: AdminApplicationsPath });
+}
+
+export function grantAdminApplicationUser(slug: string, username: string, expectedVersion: number) {
+    return adminRequest<AdminApplication[]>({
+        data: { expected_version: expectedVersion, slug, username },
+        method: "PUT",
+        url: AdminApplicationUserPath,
+    });
+}
+
+export function revokeAdminApplicationUser(slug: string, username: string, expectedVersion: number) {
+    return adminRequest<AdminApplication[]>({
+        data: { expected_version: expectedVersion, slug, username },
+        method: "DELETE",
+        url: AdminApplicationUserPath,
     });
 }

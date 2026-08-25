@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/authelia/authelia/v4/internal/configuration/schema"
+	"github.com/authelia/authelia/v4/internal/middlewares"
 )
 
 func TestAdminGroupsAPIWorkflowAndWarnings(t *testing.T) {
@@ -60,4 +64,46 @@ func TestAdminGroupsAPIWorkflowAndWarnings(t *testing.T) {
 	AdminGroupDELETE(mock.Ctx)
 	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
 	assert.Contains(t, string(mock.Ctx.Response.Body()), "external_acl_not_updated")
+}
+
+func TestAdminGroupsProtectConfiguredApplicationGroupsFromStructuralChanges(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	mock.Ctx.Configuration.Applications = []schema.Application{{Slug: "grafana", Name: "Grafana", Domain: "grafana.example.com"}}
+	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"app:grafana"}))
+	group, found, err := store.LoadMTLAdminGroup(t.Context(), "app:grafana")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	AdminGroupsGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	var listResponse struct {
+		Data []struct {
+			Name    string `json:"name"`
+			Managed bool   `json:"managed"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(mock.Ctx.Response.Body(), &listResponse))
+	require.Len(t, listResponse.Data, 1)
+	assert.Equal(t, "app:grafana", listResponse.Data[0].Name)
+	assert.True(t, listResponse.Data[0].Managed)
+
+	for _, mutation := range []struct {
+		body string
+		run  func(*middlewares.AutheliaCtx)
+	}{
+		{body: `{"name":"app:grafana","new_name":"renamed","expected_version":` + jsonInt(group.Version) + `}`, run: AdminGroupPATCH},
+		{body: `{"name":"app:grafana","expected_version":` + jsonInt(group.Version) + `}`, run: AdminGroupDELETE},
+	} {
+		mock.Ctx.Response.Reset()
+		mock.Ctx.Request.SetBodyString(mutation.body)
+		mutation.run(mock.Ctx)
+		assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
+	}
+
+	_, found, err = store.LoadMTLAdminGroup(t.Context(), "app:grafana")
+	require.NoError(t, err)
+	assert.True(t, found)
+	_, found, err = store.LoadMTLAdminGroup(t.Context(), "renamed")
+	require.NoError(t, err)
+	assert.False(t, found)
 }

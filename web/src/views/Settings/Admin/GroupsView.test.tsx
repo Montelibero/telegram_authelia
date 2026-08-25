@@ -30,7 +30,7 @@ vi.mock("@services/Admin", () => ({
 }));
 vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
 
-const summary = { name: "team, odd", updated_at: "2026-08-25T00:00:00Z", user_count: 1, version: 2 };
+const summary = { managed: false, name: "team, odd", updated_at: "2026-08-25T00:00:00Z", user_count: 1, version: 2 };
 const details = { ...summary, users: ["alice"] };
 
 beforeEach(() => {
@@ -71,7 +71,7 @@ it("renames and deletes a group while surfacing the external ACL warning", async
     vi.mocked(deleteAdminGroup).mockResolvedValue({
         affected_users: ["alice"],
         external_acl_not_updated: true,
-        group: { name: "", updated_at: "", user_count: 0, users: [], version: 0 },
+        group: { managed: false, name: "", updated_at: "", user_count: 0, users: [], version: 0 },
     });
     render(<GroupsView currentUsername="admin" />);
     fireEvent.click(await screen.findByRole("button", { name: /team, odd/ }));
@@ -110,6 +110,22 @@ it("requires exact typed confirmation for changes affecting the current administ
     expect(screen.getByRole("button", { name: "Rename group" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Delete group" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Remove admin" })).toBeEnabled();
+});
+
+it("keeps application-managed group structure read-only while allowing membership changes", async () => {
+    const managed = { ...details, managed: true };
+    vi.mocked(getAdminGroups).mockResolvedValue([managed]);
+    vi.mocked(getAdminGroup).mockResolvedValue(managed);
+
+    render(<GroupsView currentUsername="admin" />);
+    fireEvent.click(await screen.findByRole("button", { name: /team, odd/ }));
+
+    expect(await screen.findByText("Managed application group")).toBeInTheDocument();
+    expect(screen.getByLabelText("Group name")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rename group" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete group" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Username to add"), { target: { value: "bob" } });
+    expect(screen.getByRole("button", { name: "Add member" })).toBeEnabled();
 });
 
 it("refreshes group details after a version conflict", async () => {

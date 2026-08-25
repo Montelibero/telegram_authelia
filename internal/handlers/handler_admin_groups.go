@@ -43,6 +43,9 @@ func AdminGroupsGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	groups, err := store.ListMTLAdminGroups(ctx)
+	for i := range groups {
+		groups[i].Managed = adminApplicationGroupManaged(ctx, groups[i].Name)
+	}
 	adminAPIRespond(ctx, groups, fasthttp.StatusOK, err)
 }
 
@@ -56,6 +59,7 @@ func AdminGroupGET(ctx *middlewares.AutheliaCtx) {
 	if err == nil && !found {
 		err = storage.ErrMTLGroupNotFound
 	}
+	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
 	adminAPIRespond(ctx, group, fasthttp.StatusOK, err)
 }
 
@@ -70,12 +74,17 @@ func AdminGroupPOST(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	group, err := store.CreateMTLAdminGroup(ctx, request.Name, adminAPIActor(ctx))
+	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
 	adminAPIRespond(ctx, group, fasthttp.StatusCreated, err)
 }
 
 func AdminGroupPATCH(ctx *middlewares.AutheliaCtx) {
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	if adminApplicationGroupManaged(ctx, request.Name) {
+		adminAPIError(ctx, storage.ErrMTLConflict)
 		return
 	}
 	store, ok := ctx.Providers.StorageProvider.(adminGroupStore)
@@ -97,12 +106,17 @@ func AdminGroupPATCH(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	group, affected, err := store.RenameMTLAdminGroup(ctx, request.Name, request.NewName, request.ExpectedVersion, actor)
+	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
 	adminAPIRespond(ctx, adminGroupWarningResponse{Group: group, AffectedUsers: affected, ExternalACLNotUpdated: true}, fasthttp.StatusOK, err)
 }
 
 func AdminGroupDELETE(ctx *middlewares.AutheliaCtx) {
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	if adminApplicationGroupManaged(ctx, request.Name) {
+		adminAPIError(ctx, storage.ErrMTLConflict)
 		return
 	}
 	store, ok := ctx.Providers.StorageProvider.(adminGroupStore)
@@ -157,5 +171,16 @@ func adminGroupUserMutation(ctx *middlewares.AutheliaCtx, add bool) {
 	} else {
 		group, err = store.RemoveMTLAdminGroupUser(ctx, request.Name, request.Username, request.ExpectedVersion, actor)
 	}
+	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
 	adminAPIRespond(ctx, group, fasthttp.StatusOK, err)
+}
+
+func adminApplicationGroupManaged(ctx *middlewares.AutheliaCtx, name string) bool {
+	for _, application := range ctx.Configuration.Applications {
+		if application.IsEnabled() && applicationGroup(application) == name {
+			return true
+		}
+	}
+
+	return false
 }

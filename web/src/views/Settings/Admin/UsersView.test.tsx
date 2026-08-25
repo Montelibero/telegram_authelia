@@ -223,6 +223,7 @@ it("manages emails and unlinks identities", async () => {
 
 it("adds and removes user group memberships", async () => {
     vi.mocked(addAdminGroupUser).mockResolvedValue({
+        managed: false,
         name: "reviewers",
         updated_at: "2026-08-25T00:00:00Z",
         user_count: 1,
@@ -230,6 +231,7 @@ it("adds and removes user group memberships", async () => {
         version: 5,
     });
     vi.mocked(removeAdminGroupUser).mockResolvedValue({
+        managed: false,
         name: "users",
         updated_at: "2026-08-25T00:00:00Z",
         user_count: 0,
@@ -237,6 +239,7 @@ it("adds and removes user group memberships", async () => {
         version: 3,
     });
     vi.mocked(getAdminGroup).mockImplementation(async (name) => ({
+        managed: false,
         name,
         updated_at: "2026-08-25T00:00:00Z",
         user_count: name === "users" ? 1 : 0,

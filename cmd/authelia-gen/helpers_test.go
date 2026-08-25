@@ -97,6 +97,11 @@ func TestBuildCSP(t *testing.T) {
 	}
 }
 
+func TestGetKeyNameFromTagAndPrefixHandlesRootCollections(t *testing.T) {
+	assert.Equal(t, "applications[]", getKeyNameFromTagAndPrefix("", "applications", true, false))
+	assert.Equal(t, "labels.*", getKeyNameFromTagAndPrefix("", "labels", false, true))
+}
+
 func TestContainsType(t *testing.T) {
 	astring := ""
 
