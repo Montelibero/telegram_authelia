@@ -1,12 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
+    addAdminGroupUser,
     addAdminUserEmail,
     createAdminUser,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminGroup,
     getAdminUser,
     getAdminUsers,
+    removeAdminGroupUser,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
@@ -23,12 +26,15 @@ vi.mock("@contexts/NotificationsContext", () => ({
     useNotifications: () => ({ createErrorNotification: notifyError, createSuccessNotification: notifySuccess }),
 }));
 vi.mock("@services/Admin", () => ({
+    addAdminGroupUser: vi.fn(),
     addAdminUserEmail: vi.fn(),
     createAdminUser: vi.fn(),
     deleteAdminUserEmail: vi.fn(),
     generateAdminUserSetupLink: vi.fn(),
+    getAdminGroup: vi.fn(),
     getAdminUser: vi.fn(),
     getAdminUsers: vi.fn(),
+    removeAdminGroupUser: vi.fn(),
     setAdminUserPrimaryEmail: vi.fn(),
     unlinkAdminUserIdentity: vi.fn(),
     updateAdminUser: vi.fn(),
@@ -96,6 +102,25 @@ it("loads users and opens user details", async () => {
 
     expect(await screen.findByDisplayValue("Alice")).toBeInTheDocument();
     expect(getAdminUser).toHaveBeenCalledWith("alice");
+});
+
+it("filters users locally by username, display name, and email", async () => {
+    vi.mocked(getAdminUsers).mockResolvedValue([
+        summary,
+        {
+            ...summary,
+            display_name: "Bob Builder",
+            primary_email: "builder@example.com",
+            username: "bob",
+        },
+    ]);
+    render(<UsersView currentUsername="admin" />);
+
+    await screen.findByText(/alice@example.com/);
+    fireEvent.change(screen.getByLabelText("Filter users"), { target: { value: "BUILDER@" } });
+
+    expect(screen.queryByText(/alice@example.com/)).not.toBeInTheDocument();
+    expect(screen.getByText(/builder@example.com/)).toBeInTheDocument();
 });
 
 it("reauthenticates with a password without replacing the current login", async () => {
@@ -194,6 +219,40 @@ it("manages emails and unlinks identities", async () => {
     await waitFor(() => expect(deleteAdminUserEmail).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Unlink telegram" }));
     await waitFor(() => expect(unlinkAdminUserIdentity).toHaveBeenCalledWith("alice", "telegram", 2, ""));
+});
+
+it("adds and removes user group memberships", async () => {
+    vi.mocked(addAdminGroupUser).mockResolvedValue({
+        name: "reviewers",
+        updated_at: "2026-08-25T00:00:00Z",
+        user_count: 1,
+        users: ["alice"],
+        version: 5,
+    });
+    vi.mocked(removeAdminGroupUser).mockResolvedValue({
+        name: "users",
+        updated_at: "2026-08-25T00:00:00Z",
+        user_count: 0,
+        users: [],
+        version: 3,
+    });
+    vi.mocked(getAdminGroup).mockImplementation(async (name) => ({
+        name,
+        updated_at: "2026-08-25T00:00:00Z",
+        user_count: name === "users" ? 1 : 0,
+        users: name === "users" ? ["alice"] : [],
+        version: name === "users" ? 2 : 4,
+    }));
+    render(<UsersView currentUsername="admin" />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
+    await screen.findByDisplayValue("Alice");
+
+    fireEvent.change(screen.getByLabelText("New group"), { target: { value: "reviewers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add group" }));
+    await waitFor(() => expect(addAdminGroupUser).toHaveBeenCalledWith("reviewers", "alice", 4));
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove users" }));
+    await waitFor(() => expect(removeAdminGroupUser).toHaveBeenCalledWith("users", "alice", 2, ""));
 });
 
 it("refreshes user details after an optimistic version conflict", async () => {

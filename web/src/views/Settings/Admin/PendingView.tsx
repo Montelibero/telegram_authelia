@@ -11,8 +11,9 @@ import {
     ListItem,
     ListItemButton,
     ListItemText,
-    MenuItem,
     Stack,
+    Tab,
+    Tabs,
     TextField,
     Typography,
 } from "@mui/material";
@@ -114,18 +115,21 @@ const PendingView = function () {
                 <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
                     {translate("Unlock changes")}
                 </Button>
-                <TextField
-                    label={translate("Status filter")}
-                    select
+                <Tabs
+                    aria-label={translate("Status filter")}
                     value={filter}
-                    onChange={(event) => setFilter(event.target.value as RegistrationFilter)}
-                    size="small"
+                    onChange={(_event, value: RegistrationFilter) => {
+                        setSelected(undefined);
+                        setFilter(value);
+                    }}
+                    variant="scrollable"
+                    scrollButtons="auto"
                 >
-                    <MenuItem value="pending">{translate("Pending")}</MenuItem>
-                    <MenuItem value="approved">{translate("Approved")}</MenuItem>
-                    <MenuItem value="rejected">{translate("Rejected")}</MenuItem>
-                    <MenuItem value="all">{translate("All")}</MenuItem>
-                </TextField>
+                    <Tab value="pending" label={translate("Pending")} />
+                    <Tab value="approved" label={translate("Approved")} />
+                    <Tab value="rejected" label={translate("Rejected")} />
+                    <Tab value="all" label={translate("All")} />
+                </Tabs>
             </Stack>
             <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { lg: "minmax(260px, 1fr) 2fr", xs: "1fr" } }}>
                 <Card variant="outlined">

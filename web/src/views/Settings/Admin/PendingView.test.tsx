@@ -53,6 +53,28 @@ it("loads pending registrations and editable details", async () => {
     expect(getAdminRegistration).toHaveBeenCalledWith(42);
 });
 
+it("loads pending, approved, and rejected registration tabs", async () => {
+    render(<PendingView />);
+    await waitFor(() => expect(getAdminRegistrations).toHaveBeenCalledWith("pending"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Approved" }));
+    await waitFor(() => expect(getAdminRegistrations).toHaveBeenCalledWith("approved"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Rejected" }));
+    await waitFor(() => expect(getAdminRegistrations).toHaveBeenCalledWith("rejected"));
+});
+
+it("clears an actionable pending detail when switching status tabs", async () => {
+    render(<PendingView />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/ }));
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Approved" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+});
+
 it("reauthenticates before registration mutations", async () => {
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<PendingView />);
