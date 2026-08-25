@@ -6,6 +6,7 @@ import {
     Button,
     Card,
     CardContent,
+    Chip,
     List,
     ListItem,
     ListItemButton,
@@ -166,7 +167,10 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
                             {groups.map((group) => (
                                 <ListItem disablePadding key={group.name}>
                                     <ListItemButton onClick={() => openGroup(group.name).catch(console.error)}>
-                                        <ListItemText primary={group.name} secondary={`${group.user_count} users`} />
+                                        <ListItemText
+                                            primary={group.name}
+                                            secondary={`${group.user_count} users${group.managed ? ` · ${translate("Managed application group")}` : ""}`}
+                                        />
                                     </ListItemButton>
                                 </ListItem>
                             ))}
@@ -204,7 +208,9 @@ const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDe
         <Card variant="outlined">
             <CardContent>
                 <Stack spacing={2}>
+                    {details.managed ? <Chip label={translate("Managed application group")} /> : null}
                     <TextField
+                        disabled={details.managed}
                         label={translate("Group name")}
                         value={name}
                         onChange={(event) => setName(event.target.value)}
@@ -218,7 +224,7 @@ const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDe
                     <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
                         <Button
                             variant="contained"
-                            disabled={affectsCurrentAdministrator && !confirmed}
+                            disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
                             onClick={() =>
                                 applyGroup(() =>
                                     renameAdminGroup(
@@ -235,7 +241,7 @@ const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDe
                         <Button
                             color="error"
                             variant="outlined"
-                            disabled={affectsCurrentAdministrator && !confirmed}
+                            disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
                             onClick={() =>
                                 applyGroup(() =>
                                     deleteAdminGroup(

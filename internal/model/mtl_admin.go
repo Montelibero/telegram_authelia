@@ -49,6 +49,7 @@ type MTLAdminGroupSummary struct {
 	Version   int       `db:"version" json:"version"`
 	UserCount int       `db:"user_count" json:"user_count"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+	Managed   bool      `db:"-" json:"managed"`
 }
 
 // MTLAdminGroupDetails is the safe administrative detail representation of a group.

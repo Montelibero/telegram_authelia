@@ -30,6 +30,7 @@ func TestRussianSettingsLocaleContainsAdminTranslations(t *testing.T) {
 		"User update failed; reauthenticate or reload and try again", "User updated", "Username to add", "Users", "none",
 		"Failed to load permissions", "Filter applications", "No applications are configured", "Permission changes require a recent administrator password check.",
 		"Permission update failed; reauthenticate or reload and try again", "Permission updated", "Permissions", "Permissions changed elsewhere; the latest version has been loaded",
+		"Managed application group",
 	}
 
 	english := readSettingsLocale(t, "locales/en/settings.json")

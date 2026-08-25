@@ -116,6 +116,7 @@ export interface AdminGroupSummary {
     version: number;
     user_count: number;
     updated_at: string;
+    managed: boolean;
 }
 
 export interface AdminGroupDetails extends AdminGroupSummary {
