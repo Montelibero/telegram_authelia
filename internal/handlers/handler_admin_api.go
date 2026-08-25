@@ -38,10 +38,12 @@ func adminAPIRespond(ctx *middlewares.AutheliaCtx, data any, status int, err err
 func adminAPIError(ctx *middlewares.AutheliaCtx, err error) {
 	status := fasthttp.StatusInternalServerError
 	switch {
-	case errors.Is(err, storage.ErrMTLUserNotFound), errors.Is(err, storage.ErrMTLGroupNotFound), errors.Is(err, storage.ErrMTLIdentityNotFound), errors.Is(err, storage.ErrMTLMembershipNotFound):
+	case errors.Is(err, storage.ErrMTLUserNotFound), errors.Is(err, storage.ErrMTLGroupNotFound), errors.Is(err, storage.ErrMTLIdentityNotFound), errors.Is(err, storage.ErrMTLMembershipNotFound), errors.Is(err, storage.ErrMTLRegistrationNotFound):
 		status = fasthttp.StatusNotFound
-	case errors.Is(err, storage.ErrMTLVersionConflict), errors.Is(err, storage.ErrMTLConflict), errors.Is(err, storage.ErrMTLPrimaryEmailRequired):
+	case errors.Is(err, storage.ErrMTLVersionConflict), errors.Is(err, storage.ErrMTLConflict), errors.Is(err, storage.ErrMTLPrimaryEmailRequired), errors.Is(err, storage.ErrMTLRegistrationTerminal):
 		status = fasthttp.StatusConflict
+	case errors.Is(err, storage.ErrMTLRegistrationIncomplete):
+		status = fasthttp.StatusBadRequest
 	}
 	_ = ctx.ReplyJSON(middlewares.ErrorResponse{Status: "KO", Message: fasthttp.StatusMessage(status)}, status)
 }

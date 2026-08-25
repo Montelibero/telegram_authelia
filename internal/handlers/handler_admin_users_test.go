@@ -196,7 +196,28 @@ func (s adminAPITestStore) RemoveMTLAdminGroupUser(_ context.Context, name, user
 	return s.SQLiteProvider.RemoveMTLAdminGroupUser(context.Background(), name, username, version, actor)
 }
 
+func (s adminAPITestStore) ListMTLRegistrations(_ context.Context, status model.MTLRegistrationStatus) ([]model.MTLRegistrationRequest, error) {
+	return s.SQLiteProvider.ListMTLRegistrations(context.Background(), status)
+}
+
+func (s adminAPITestStore) LoadMTLRegistration(_ context.Context, id int64) (model.MTLRegistrationRequest, bool, error) {
+	return s.SQLiteProvider.LoadMTLRegistration(context.Background(), id)
+}
+
+func (s adminAPITestStore) ApproveMTLRegistration(_ context.Context, approval model.MTLRegistrationApproval) (string, error) {
+	return s.SQLiteProvider.ApproveMTLRegistration(context.Background(), approval)
+}
+
+func (s adminAPITestStore) RejectMTLRegistration(_ context.Context, id int64, version int, actor string) (model.MTLRegistrationRequest, error) {
+	return s.SQLiteProvider.RejectMTLRegistration(context.Background(), id, version, actor)
+}
+
 func jsonInt(value int) string {
+	data, _ := json.Marshal(value)
+	return string(data)
+}
+
+func jsonInt64(value int64) string {
 	data, _ := json.Marshal(value)
 	return string(data)
 }

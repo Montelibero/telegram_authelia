@@ -249,6 +249,10 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 	r.DELETE("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupDELETE))
 	r.PUT("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserPUT))
 	r.DELETE("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserDELETE))
+	r.GET("/api/admin/registrations", middlewareAdmin(handlers.AdminRegistrationsGET))
+	r.GET("/api/admin/registration", middlewareAdmin(handlers.AdminRegistrationGET))
+	r.POST("/api/admin/registration/approve", middlewareAdminMutation(handlers.AdminRegistrationApprovePOST))
+	r.POST("/api/admin/registration/reject", middlewareAdminMutation(handlers.AdminRegistrationRejectPOST))
 
 	r.GET("/api/configuration", middleware1FA(handlers.ConfigurationGET))
 

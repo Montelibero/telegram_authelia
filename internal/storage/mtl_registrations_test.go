@@ -106,6 +106,81 @@ func TestMTLRegistrationApprovalIsAtomic(t *testing.T) {
 	assert.Equal(t, 1, registrationAuditCount)
 }
 
+func TestMTLRegistrationApprovalUsesEditedProfileAndExplicitGroups(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	require.NoError(t, provider.MigrateMTL(context.Background()))
+	ctx := context.Background()
+
+	_, err := provider.CreateMTLAdminGroup(ctx, "readers", "")
+	require.NoError(t, err)
+	request, err := provider.UpsertMTLRegistration(ctx, model.MTLRegistrationCandidate{
+		Provider: "telegram", ProviderUserID: "edited", ProviderUsername: "original",
+		DisplayName: "Original", ProposedUsername: "original", ProposedEmail: "original@example.com",
+	})
+	require.NoError(t, err)
+
+	username, err := provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{
+		RequestID: request.ID, ExpectedVersion: request.Version, Username: "edited",
+		DisplayName: "Edited Name", Email: "edited@example.com", Groups: []string{"readers"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "edited", username)
+	details, found, err := provider.LoadMTLUser(ctx, username)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "Edited Name", details.User.DisplayName)
+	assert.Equal(t, []string{"readers"}, details.Groups)
+}
+
+func TestMTLRegistrationApprovalRollsBackWhenExplicitGroupDoesNotExist(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	require.NoError(t, provider.MigrateMTL(context.Background()))
+	ctx := context.Background()
+	request, err := provider.UpsertMTLRegistration(ctx, model.MTLRegistrationCandidate{
+		Provider: "telegram", ProviderUserID: "rollback", ProposedUsername: "rollback", ProposedEmail: "rollback@example.com",
+	})
+	require.NoError(t, err)
+
+	_, err = provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{
+		RequestID: request.ID, ExpectedVersion: request.Version, Groups: []string{"missing"},
+	})
+	assert.ErrorIs(t, err, ErrMTLGroupNotFound)
+	_, found, err := provider.LoadMTLUser(ctx, "rollback")
+	require.NoError(t, err)
+	assert.False(t, found)
+	unchanged, found, err := provider.LoadMTLRegistration(ctx, request.ID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, model.MTLRegistrationStatusPending, unchanged.Status)
+	assert.Equal(t, request.Version, unchanged.Version)
+}
+
+func TestMTLRegistrationStaleApprovalDoesNotCreateAnything(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	require.NoError(t, provider.MigrateMTL(context.Background()))
+	ctx := context.Background()
+	request, err := provider.UpsertMTLRegistration(ctx, model.MTLRegistrationCandidate{
+		Provider: "telegram", ProviderUserID: "stale", ProposedUsername: "stale", ProposedEmail: "stale@example.com",
+	})
+	require.NoError(t, err)
+
+	_, err = provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{RequestID: request.ID, ExpectedVersion: request.Version + 1})
+	assert.ErrorIs(t, err, ErrMTLVersionConflict)
+	_, found, err := provider.LoadMTLUser(ctx, "stale")
+	require.NoError(t, err)
+	assert.False(t, found)
+	var identities, memberships, auditEvents int
+	require.NoError(t, provider.db.GetContext(ctx, &identities, `SELECT COUNT(*) FROM mtl_user_identities WHERE provider_user_id = 'stale'`))
+	require.NoError(t, provider.db.GetContext(ctx, &memberships, `SELECT COUNT(*) FROM mtl_group_memberships`))
+	require.NoError(t, provider.db.GetContext(ctx, &auditEvents, `SELECT COUNT(*) FROM mtl_audit_events`))
+	assert.Zero(t, identities)
+	assert.Zero(t, memberships)
+	assert.Zero(t, auditEvents)
+}
+
 func TestMTLRegistrationApprovalRejectsIncompleteAndConflictingData(t *testing.T) {
 	provider := newTestSQLiteProvider(t)
 	t.Cleanup(func() { require.NoError(t, provider.Close()) })

@@ -159,9 +159,12 @@ func (p *SQLProvider) ApproveMTLRegistration(ctx context.Context, approval model
 	if username == "" || email == "" {
 		return "", ErrMTLRegistrationIncomplete
 	}
-	displayName := username
-	if request.DisplayName.Valid && strings.TrimSpace(request.DisplayName.String) != "" {
-		displayName = request.DisplayName.String
+	displayName := strings.TrimSpace(approval.DisplayName)
+	if displayName == "" && request.DisplayName.Valid {
+		displayName = strings.TrimSpace(request.DisplayName.String)
+	}
+	if displayName == "" {
+		displayName = username
 	}
 
 	actorID, err := loadOptionalMTLActor(ctx, tx, approval.ActorUsername)
@@ -181,6 +184,25 @@ func (p *SQLProvider) ApproveMTLRegistration(ctx context.Context, approval model
 	}
 	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, ?, ?, ?)`), userID, request.Provider, request.ProviderUserID, request.ProviderUsername); err != nil {
 		return "", mapMTLConflict("failed to link approved MTL user identity", err)
+	}
+	groups := make(map[string]struct{}, len(approval.Groups))
+	for _, rawGroup := range approval.Groups {
+		group := strings.TrimSpace(rawGroup)
+		if _, exists := groups[group]; exists {
+			continue
+		}
+		groups[group] = struct{}{}
+		result, execErr := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_group_memberships (user_id, group_id) SELECT ?, id FROM mtl_groups WHERE name = ?`), userID, group)
+		if execErr != nil {
+			return "", mapMTLConflict("failed to add approved MTL user group", execErr)
+		}
+		rows, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return "", fmt.Errorf("failed to check approved MTL user group: %w", rowsErr)
+		}
+		if rows != 1 {
+			return "", ErrMTLGroupNotFound
+		}
 	}
 	result, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_registration_requests SET status = 'approved', version = version + 1, updated_at = CURRENT_TIMESTAMP, resolved_at = CURRENT_TIMESTAMP, resolved_by_user_id = ?, approved_user_id = ? WHERE id = ? AND version = ? AND status = 'pending'`), actorID, userID, request.ID, approval.ExpectedVersion)
 	if err != nil {
