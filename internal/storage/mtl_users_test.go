@@ -138,6 +138,71 @@ func TestMTLUserIdentityLifecycle(t *testing.T) {
 	assert.Equal(t, 2, auditCount)
 }
 
+func TestMTLSelfServicePasswordLifecycle(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	oldHash := "old-hash"
+	require.NoError(t, provider.ImportMTLUsers(ctx, []model.MTLUserImport{
+		{Username: "bublik", DisplayName: "Bublik", PasswordHash: &oldHash, Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true}}, Groups: []string{"admins"}},
+		{Username: "backup", DisplayName: "Backup", PasswordHash: &oldHash, Emails: []model.MTLUserImportEmail{{Email: "backup@eurmtl.me", Primary: true}}, Groups: []string{"admins"}},
+	}))
+	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "bublik", "telegram", "42", "bublik"))
+
+	details, found, err := provider.LoadMTLUser(ctx, "bublik")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	newHash := "new-hash"
+	changed, err := provider.SetMTLSelfServicePassword(ctx, "bublik", newHash, details.User.Version, "bublik")
+	require.NoError(t, err)
+	assert.True(t, changed.PasswordEnabled)
+	assert.Equal(t, details.User.Version+1, changed.Version)
+	assert.Equal(t, details.User.SessionEpoch+1, changed.SessionEpoch)
+
+	removed, err := provider.RemoveMTLSelfServicePassword(ctx, "bublik", changed.Version, "bublik")
+	require.NoError(t, err)
+	assert.False(t, removed.PasswordEnabled)
+	assert.Equal(t, changed.Version+1, removed.Version)
+	assert.Equal(t, changed.SessionEpoch+1, removed.SessionEpoch)
+
+	stored, found, err := provider.LoadMTLUser(ctx, "bublik")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.False(t, stored.User.PasswordHash.Valid)
+
+	var setAudit, removeAudit int
+	require.NoError(t, provider.db.Get(&setAudit, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type = 'password.set' AND target_id = 'bublik'`))
+	require.NoError(t, provider.db.Get(&removeAudit, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type = 'password.removed' AND target_id = 'bublik'`))
+	assert.Equal(t, 1, setAudit)
+	assert.Equal(t, 1, removeAudit)
+}
+
+func TestMTLSelfServicePasswordRemovalGuards(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	hash := "hash"
+	require.NoError(t, provider.ImportMTLUsers(ctx, []model.MTLUserImport{
+		{Username: "last-admin", DisplayName: "Last Admin", PasswordHash: &hash, Emails: []model.MTLUserImportEmail{{Email: "admin@eurmtl.me", Primary: true}}, Groups: []string{"admins"}},
+		{Username: "plain", DisplayName: "Plain", PasswordHash: &hash, Emails: []model.MTLUserImportEmail{{Email: "plain@eurmtl.me", Primary: true}}},
+	}))
+	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "last-admin", "telegram", "1", "admin"))
+
+	admin, found, err := provider.LoadMTLUser(ctx, "last-admin")
+	require.NoError(t, err)
+	require.True(t, found)
+	_, err = provider.RemoveMTLSelfServicePassword(ctx, "last-admin", admin.User.Version, "last-admin")
+	assert.ErrorIs(t, err, ErrMTLLastPasswordAdmin)
+
+	plain, found, err := provider.LoadMTLUser(ctx, "plain")
+	require.NoError(t, err)
+	require.True(t, found)
+	_, err = provider.RemoveMTLSelfServicePassword(ctx, "plain", plain.User.Version, "plain")
+	assert.ErrorIs(t, err, ErrMTLTelegramIdentityRequired)
+
+	_, err = provider.SetMTLSelfServicePassword(ctx, "plain", "new", plain.User.Version+1, "plain")
+	assert.ErrorIs(t, err, ErrMTLVersionConflict)
+}
+
 func newTestMTLUserProvider(t *testing.T) *SQLiteProvider {
 	t.Helper()
 	provider := newTestSQLiteProvider(t)
