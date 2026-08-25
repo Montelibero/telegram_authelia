@@ -268,7 +268,7 @@ func FirstFactorReauthenticatePOST(delayer middlewares.Delayer) middlewares.Requ
 
 		ctx.Logger.Tracef(logFmtTraceProfileDetails, userSession.Username, userDetails.Groups, userDetails.Emails)
 
-		userSession.SetOneFactorReauthenticate(ctx.GetClock().Now(), userDetails)
+		userSession.SetPasswordReauthenticate(ctx.GetClock().Now(), userDetails)
 
 		if ctx.Configuration.AuthenticationBackend.RefreshInterval.Update() {
 			userSession.RefreshTTL = ctx.GetClock().Now().Add(ctx.Configuration.AuthenticationBackend.RefreshInterval.Value())

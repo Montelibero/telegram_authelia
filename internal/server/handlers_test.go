@@ -13,6 +13,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/random"
+	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/templates"
 )
 
@@ -361,6 +362,36 @@ func TestHandlerMainWithOptionalFeatures(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotNil(t, handler)
 		})
+	}
+}
+
+func TestHandlerMainAdminRouteWithBasePathAndMethodRestriction(t *testing.T) {
+	provider, err := templates.New(templates.Config{})
+	require.NoError(t, err)
+	require.NoError(t, provider.LoadTemplatedAssets(assets))
+	address := *schema.DefaultServerConfiguration.Address
+	address.SetPath("/auth")
+	config := &schema.Configuration{Server: schema.Server{Address: &address, Endpoints: schema.DefaultServerConfiguration.Endpoints}}
+	providers := middlewares.NewProvidersBasic()
+	providers.Random = random.NewMathematical()
+	providers.Templates = provider
+	providers.SessionProvider = session.NewProvider(config.Session, nil)
+	handler, err := handlerMain(t.Context(), config, providers)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		method   string
+		expected int
+	}{
+		{method: fasthttp.MethodGet, expected: fasthttp.StatusUnauthorized},
+		{method: fasthttp.MethodPost, expected: fasthttp.StatusMethodNotAllowed},
+	} {
+		var ctx fasthttp.RequestCtx
+		ctx.Request.Header.SetMethod(tc.method)
+		ctx.Request.Header.SetHost("login.example.com")
+		ctx.Request.SetRequestURI("/auth/api/admin")
+		handler(&ctx)
+		assert.Equal(t, tc.expected, ctx.Response.StatusCode())
 	}
 }
 

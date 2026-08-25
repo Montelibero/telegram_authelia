@@ -220,10 +220,16 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPostMiddlewares(middlewares.RequireFreshPasswordElevation).
 		Build()
 
+	middlewareAdmin := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdmin).
+		Build()
+
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
 	r.GET("/api/health", middlewareAPI(handlers.HealthGET))
 
 	r.GET("/api/state", middlewareAPI(handlers.StateGET))
+	r.GET("/api/admin", middlewareAdmin(handlers.AdminGET))
 
 	r.GET("/api/configuration", middleware1FA(handlers.ConfigurationGET))
 
