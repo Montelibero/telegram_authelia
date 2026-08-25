@@ -104,6 +104,20 @@ it("loads users and opens user details", async () => {
     expect(getAdminUser).toHaveBeenCalledWith("alice");
 });
 
+it("opens imported user details when optional collections are null", async () => {
+    vi.mocked(getAdminUser).mockResolvedValue({
+        ...details,
+        groups: null,
+        identities: null,
+    } as unknown as typeof details);
+    render(<UsersView currentUsername="admin" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
+
+    expect(await screen.findByDisplayValue("Alice")).toBeInTheDocument();
+    expect(screen.getByText("Linked identities")).toBeInTheDocument();
+});
+
 it("filters users locally by username, display name, and email", async () => {
     vi.mocked(getAdminUsers).mockResolvedValue([
         summary,

@@ -44,6 +44,8 @@ func (p *SQLProvider) LoadMTLAdminUser(ctx context.Context, username string) (de
 		Username: user.Username, DisplayName: user.DisplayName, Status: user.Status, Version: user.Version,
 		PasswordEnabled: user.PasswordHash.Valid, Groups: []string{},
 	}
+	details.Emails = []model.MTLUserEmail{}
+	details.Identities = []model.MTLUserIdentity{}
 	details.SessionEpoch = user.SessionEpoch
 	if err = p.db.SelectContext(ctx, &details.Emails, p.db.Rebind(`SELECT id, user_id, email, is_primary, verified, created_at, updated_at FROM mtl_user_emails WHERE user_id = ? ORDER BY email`), user.ID); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin user emails: %w", err)

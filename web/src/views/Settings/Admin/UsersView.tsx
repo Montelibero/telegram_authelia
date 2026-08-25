@@ -76,7 +76,13 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     const openUser = useCallback(
         async (username: string) => {
             try {
-                setSelected(await getAdminUser(username));
+                const details = await getAdminUser(username);
+                setSelected({
+                    ...details,
+                    emails: details.emails ?? [],
+                    groups: details.groups ?? [],
+                    identities: details.identities ?? [],
+                });
             } catch {
                 createErrorNotification(translate("Failed to load user"));
             }
