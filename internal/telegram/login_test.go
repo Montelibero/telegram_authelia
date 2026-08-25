@@ -14,12 +14,12 @@ import (
 )
 
 func TestLoginServiceBeginAndComplete(t *testing.T) {
-	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 256)), []byte("test secret"))
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 512)), []byte("test secret"), newFakeStateReplayStore())
 	client := &fakeLoginClient{identity: Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	users := &fakeIdentityUserStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me", Groups: []string{"app:grafana"}}, found: true}
 	service := NewLoginService(client, states, users)
 
-	authorizationURL, state, err := service.Begin("/portal")
+	authorizationURL, state, err := service.Begin(context.Background(), "/portal")
 	require.NoError(t, err)
 	assert.Equal(t, "https://issuer.example/auth?state="+state, authorizationURL)
 
@@ -34,11 +34,11 @@ func TestLoginServiceBeginAndComplete(t *testing.T) {
 }
 
 func TestLoginServiceRejectsUnsafeReturnURL(t *testing.T) {
-	service := NewLoginService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil, []byte("test secret")), &fakeIdentityUserStore{})
+	service := NewLoginService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil, []byte("test secret"), newFakeStateReplayStore()), &fakeIdentityUserStore{})
 
-	_, _, err := service.Begin("https://attacker.example/")
+	_, _, err := service.Begin(context.Background(), "https://attacker.example/")
 	assert.ErrorIs(t, err, ErrUnsafeReturnURL)
-	_, _, err = service.Begin("//attacker.example/")
+	_, _, err = service.Begin(context.Background(), "//attacker.example/")
 	assert.ErrorIs(t, err, ErrUnsafeReturnURL)
 }
 
@@ -54,9 +54,9 @@ func TestLoginServiceRejectsUnknownAndDisabledUsers(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x42}, 256)), []byte("test secret"))
+			states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x42}, 512)), []byte("test secret"), newFakeStateReplayStore())
 			service := NewLoginService(&fakeLoginClient{identity: Identity{ProviderUserID: "1"}}, states, tc.store)
-			_, state, err := service.Begin("")
+			_, state, err := service.Begin(context.Background(), "")
 			require.NoError(t, err)
 
 			_, err = service.Complete(context.Background(), state, "code")

@@ -48,12 +48,12 @@ func NewLoginService(client loginClient, states *StateStore, users IdentityUserS
 }
 
 // Begin creates a state-bound flow and returns its authorization URL and state.
-func (s *LoginService) Begin(returnURL string) (authorizationURL, state string, err error) {
+func (s *LoginService) Begin(ctx context.Context, returnURL string) (authorizationURL, state string, err error) {
 	if !safeReturnURL(returnURL) {
 		return "", "", ErrUnsafeReturnURL
 	}
 
-	flow, err := s.states.Create(returnURL)
+	flow, err := s.states.Create(ctx, returnURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -63,7 +63,7 @@ func (s *LoginService) Begin(returnURL string) (authorizationURL, state string, 
 
 // Complete consumes the flow, verifies OIDC, and resolves an active linked user.
 func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginResult, error) {
-	flow, err := s.states.Consume(state)
+	flow, err := s.states.Consume(ctx, state)
 	if err != nil {
 		return LoginResult{}, err
 	}

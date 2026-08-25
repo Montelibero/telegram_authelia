@@ -1054,6 +1054,22 @@ func (p *SQLProvider) ConsumeOneTimeCode(ctx context.Context, code *model.OneTim
 	}
 }
 
+// ConsumeTelegramState atomically consumes a Telegram OIDC state replay marker.
+func (p *SQLProvider) ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error) {
+	result, err := p.db.ExecContext(ctx, p.sqlConsumeOneTimeCode, sql.NullTime{Valid: true, Time: consumedAt}, model.NewNullIP(nil), signature)
+	if err != nil {
+		return false, fmt.Errorf("error consuming Telegram state: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("error consuming Telegram state: %w", err)
+	}
+	if rows > 1 {
+		return false, fmt.Errorf("error consuming Telegram state: multiple rows affected")
+	}
+	return rows == 1, nil
+}
+
 // RevokeOneTimeCode revokes a one-time code in the storage provider using the public ID.
 func (p *SQLProvider) RevokeOneTimeCode(ctx context.Context, publicID uuid.UUID, ip model.IP) (err error) {
 	var (

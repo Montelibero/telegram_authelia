@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,8 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"sync"
+	"net"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/authelia/authelia/v4/internal/model"
 )
 
 var (
@@ -28,21 +33,27 @@ type Flow struct {
 	ReturnURL    string
 	Purpose      string
 	Username     string
+	ReplayKey    string
 	ExpiresAt    time.Time
+}
+
+// StateReplayStore persists and atomically consumes state replay markers.
+type StateReplayStore interface {
+	SaveOneTimeCode(ctx context.Context, code model.OneTimeCode) (signature string, err error)
+	ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error)
 }
 
 // StateStore seals short-lived OIDC flows and tracks local replay attempts.
 type StateStore struct {
-	mu       sync.Mutex
-	consumed map[[sha256.Size]byte]time.Time
-	ttl      time.Duration
-	now      func() time.Time
-	random   io.Reader
-	aead     cipher.AEAD
+	ttl    time.Duration
+	now    func() time.Time
+	random io.Reader
+	aead   cipher.AEAD
+	replay StateReplayStore
 }
 
 // NewStateStore constructs a state store. Nil clock and random sources use production defaults.
-func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, secret []byte) *StateStore {
+func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, secret []byte, replay StateReplayStore) *StateStore {
 	if now == nil {
 		now = time.Now
 	}
@@ -61,20 +72,20 @@ func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, se
 		panic(err)
 	}
 
-	return &StateStore{consumed: map[[sha256.Size]byte]time.Time{}, ttl: ttl, now: now, random: random, aead: aead}
+	return &StateStore{ttl: ttl, now: now, random: random, aead: aead, replay: replay}
 }
 
 // Create creates and stores a new Telegram OIDC flow.
-func (s *StateStore) Create(returnURL string) (Flow, error) {
-	return s.create(returnURL, "login", "")
+func (s *StateStore) Create(ctx context.Context, returnURL string) (Flow, error) {
+	return s.create(ctx, returnURL, "login", "")
 }
 
 // CreateLink creates a flow bound to account linking for one local username.
-func (s *StateStore) CreateLink(username string) (Flow, error) {
-	return s.create("", "link", username)
+func (s *StateStore) CreateLink(ctx context.Context, username string) (Flow, error) {
+	return s.create(ctx, "", "link", username)
 }
 
-func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
+func (s *StateStore) create(ctx context.Context, returnURL, purpose, username string) (Flow, error) {
 	nonce, err := s.randomValue()
 	if err != nil {
 		return Flow{}, err
@@ -85,13 +96,34 @@ func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
 		return Flow{}, err
 	}
 
+	replayCode := make([]byte, 32)
+	if _, err = io.ReadFull(s.random, replayCode); err != nil {
+		return Flow{}, err
+	}
+	publicID, err := uuid.NewRandomFromReader(s.random)
+	if err != nil {
+		return Flow{}, err
+	}
+	expiresAt := s.now().Add(s.ttl)
+	if s.replay == nil {
+		return Flow{}, errors.New("Telegram state replay store is not configured")
+	}
+	replayKey, err := s.replay.SaveOneTimeCode(ctx, model.OneTimeCode{
+		PublicID: publicID, IssuedAt: s.now(), IssuedIP: model.NewIP(net.IPv4zero), ExpiresAt: expiresAt,
+		Username: "telegram", Intent: "telegram_state", Code: replayCode,
+	})
+	if err != nil {
+		return Flow{}, err
+	}
+
 	flow := Flow{
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
 		Purpose:      purpose,
 		Username:     username,
-		ExpiresAt:    s.now().Add(s.ttl),
+		ReplayKey:    replayKey,
+		ExpiresAt:    expiresAt,
 	}
 
 	payload, err := json.Marshal(flow)
@@ -130,36 +162,18 @@ func (s *StateStore) Inspect(state string) (Flow, error) {
 }
 
 // Consume atomically marks and returns a valid flow as single use in this process.
-func (s *StateStore) Consume(state string) (Flow, error) {
-	fingerprint := sha256.Sum256([]byte(state))
-	s.mu.Lock()
-	_, alreadyConsumed := s.consumed[fingerprint]
-	s.mu.Unlock()
-	if alreadyConsumed {
-		return Flow{}, ErrInvalidState
-	}
-
+func (s *StateStore) Consume(ctx context.Context, state string) (Flow, error) {
 	flow, err := s.Inspect(state)
 	if err != nil {
-		if errors.Is(err, ErrExpiredState) {
-			s.mu.Lock()
-			s.consumed[fingerprint] = s.now().Add(s.ttl)
-			s.mu.Unlock()
-		}
 		return Flow{}, err
 	}
-	now := s.now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for item, expires := range s.consumed {
-		if now.After(expires) {
-			delete(s.consumed, item)
-		}
+	consumed, err := s.replay.ConsumeTelegramState(ctx, flow.ReplayKey, s.now())
+	if err != nil {
+		return Flow{}, err
 	}
-	if _, ok := s.consumed[fingerprint]; ok {
+	if !consumed {
 		return Flow{}, ErrInvalidState
 	}
-	s.consumed[fingerprint] = flow.ExpiresAt
 	return flow, nil
 }
 

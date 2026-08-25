@@ -28,7 +28,7 @@ func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
 	mock.Ctx.Response.Reset()
 	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	store := &handlerIdentityLinkStore{}
-	states := telegram.NewStateStore(time.Minute, mock.Clock.Now, nil, []byte("test secret"))
+	states := telegram.NewStateStore(time.Minute, mock.Clock.Now, nil, []byte("test secret"), newHandlerStateReplayStore())
 	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, states, &handlerTelegramStore{})
 	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(client, states, store)
 	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/link")
@@ -67,7 +67,7 @@ func TestTelegramLinkStatusReturnsCurrentUsersIdentity(t *testing.T) {
 	defer mock.Close()
 	providerUsername := "bublik_tg"
 	store := &handlerIdentityLinkStore{identity: model.MTLUserIdentity{ProviderUserID: "987654321", ProviderUsername: &providerUsername}, found: true}
-	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(&handlerTelegramClient{}, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret")), store)
+	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(&handlerTelegramClient{}, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store)
 
 	TelegramLinkStatusGET(mock.Ctx)
 

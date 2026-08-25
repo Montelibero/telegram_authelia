@@ -21,7 +21,7 @@ func TelegramLoginGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
-	authorizationURL, state, err := ctx.Providers.Telegram.Begin(string(ctx.QueryArgs().Peek("rd")))
+	authorizationURL, state, err := ctx.Providers.Telegram.Begin(ctx, string(ctx.QueryArgs().Peek("rd")))
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Failed to start Telegram login")
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
@@ -127,7 +127,7 @@ func setTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
 	defer fasthttp.ReleaseCookie(cookie)
 	cookie.SetKey(telegramStateCookieName(state))
 	cookie.SetValue(state)
-	cookie.SetPath("/api/telegram/callback")
+	cookie.SetPath("/")
 	cookie.SetHTTPOnly(true)
 	cookie.SetSecure(true)
 	cookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
@@ -144,7 +144,7 @@ func clearTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
 	cookie := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(cookie)
 	cookie.SetKey(telegramStateCookieName(state))
-	cookie.SetPath("/api/telegram/callback")
+	cookie.SetPath("/")
 	cookie.SetExpire(time.Unix(1, 0))
 	ctx.Response.Header.SetCookie(cookie)
 }

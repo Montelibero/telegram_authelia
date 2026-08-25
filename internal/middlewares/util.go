@@ -54,12 +54,13 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	if config.Telegram.Enabled {
 		store, usersOK := providers.StorageProvider.(telegram.IdentityUserStore)
 		links, linksOK := providers.StorageProvider.(telegram.IdentityLinkStore)
-		if !usersOK || !linksOK {
+		replay, replayOK := providers.StorageProvider.(telegram.StateReplayStore)
+		if !usersOK || !linksOK || !replayOK {
 			errs = append(errs, errors.New("configured storage provider is not compatible with Telegram identities"))
 		} else if client, err := telegram.NewClient(context.Background(), config.Telegram, nil); err != nil {
 			errs = append(errs, err)
 		} else {
-			states := telegram.NewStateStore(5*time.Minute, providers.Clock.Now, nil, []byte(config.Telegram.ClientSecret))
+			states := telegram.NewStateStore(5*time.Minute, providers.Clock.Now, nil, []byte(config.Telegram.ClientSecret), replay)
 			providers.Telegram = telegram.NewLoginService(client, states, store)
 			providers.TelegramLink = telegram.NewLinkService(client, states, links)
 		}

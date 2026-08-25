@@ -31,7 +31,7 @@ func TelegramLinkGET(ctx *middlewares.AutheliaCtx) {
 		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
 		return
 	}
-	authorizationURL, state, err := ctx.Providers.TelegramLink.Begin(userSession.Username)
+	authorizationURL, state, err := ctx.Providers.TelegramLink.Begin(ctx, userSession.Username)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Failed to start Telegram account linking")
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)

@@ -977,6 +977,23 @@ func TestSQLProviderOneTimeCode(t *testing.T) {
 		require.NoError(t, provider.ConsumeOneTimeCode(ctx, loaded))
 	})
 
+	t.Run("ShouldAtomicallyConsumeTelegramStateOnce", func(t *testing.T) {
+		telegramCode := code
+		telegramCode.PublicID = uuid.New()
+		telegramCode.Intent = "telegram_state"
+		telegramCode.Code = []byte("telegram-state-marker")
+		telegramSignature, err := provider.SaveOneTimeCode(ctx, telegramCode)
+		require.NoError(t, err)
+
+		consumed, err := provider.ConsumeTelegramState(ctx, telegramSignature, time.Now().Truncate(time.Second))
+		require.NoError(t, err)
+		assert.True(t, consumed)
+
+		consumed, err = provider.ConsumeTelegramState(ctx, telegramSignature, time.Now().Truncate(time.Second))
+		require.NoError(t, err)
+		assert.False(t, consumed)
+	})
+
 	t.Run("ShouldRevokeOneTimeCode", func(t *testing.T) {
 		pubID2, _ := uuid.NewRandom()
 

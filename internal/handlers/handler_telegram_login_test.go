@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,8 +23,8 @@ func TestTelegramLoginHandlersCreateFederatedOneFactorSession(t *testing.T) {
 	defer mock.Close()
 	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321"}}
 	store := &handlerTelegramStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me", Groups: []string{"app:grafana"}}}
-	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret")), store)
-	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/login?rd=/portal")
+	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store)
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/login?rd=/portal")
 
 	TelegramLoginGET(mock.Ctx)
 	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
@@ -31,10 +33,11 @@ func TestTelegramLoginHandlersCreateFederatedOneFactorSession(t *testing.T) {
 	require.NoError(t, stateCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie(telegramStateCookieName(client.flow.State))))
 	assert.True(t, stateCookie.HTTPOnly())
 	assert.True(t, stateCookie.Secure())
+	assert.Equal(t, "/", string(stateCookie.Path()))
 	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
 
 	mock.Ctx.Response.Reset()
-	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/callback?state=" + client.flow.State + "&code=code")
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/callback?state=" + client.flow.State + "&code=code")
 	TelegramCallbackGET(mock.Ctx)
 	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
 	assert.Equal(t, "https://auth.example.com/portal", string(mock.Ctx.Response.Header.Peek("Location")))
@@ -45,6 +48,11 @@ func TestTelegramLoginHandlersCreateFederatedOneFactorSession(t *testing.T) {
 	assert.Equal(t, authentication.OneFactor, userSession.AuthenticationLevel(false))
 	assert.True(t, userSession.AuthenticationMethodRefs.External)
 	assert.False(t, userSession.AuthenticationMethodRefs.UsernameAndPassword)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
+	TelegramCallbackGET(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusBadRequest, mock.Ctx.Response.StatusCode())
 }
 
 func TestTelegramCallbackRejectsFlowFromAnotherBrowser(t *testing.T) {
@@ -52,7 +60,7 @@ func TestTelegramCallbackRejectsFlowFromAnotherBrowser(t *testing.T) {
 	defer mock.Close()
 	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321"}}
 	store := &handlerTelegramStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me"}}
-	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret")), store)
+	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store)
 	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/login")
 	TelegramLoginGET(mock.Ctx)
 
@@ -81,4 +89,27 @@ type handlerTelegramStore struct{ details model.MTLUserDetails }
 
 func (s *handlerTelegramStore) LoadMTLUserByIdentity(context.Context, string, string) (model.MTLUserDetails, bool, error) {
 	return s.details, true, nil
+}
+
+type handlerStateReplayStore struct {
+	mu       sync.Mutex
+	consumed map[string]bool
+}
+
+func newHandlerStateReplayStore() *handlerStateReplayStore {
+	return &handlerStateReplayStore{consumed: map[string]bool{}}
+}
+
+func (s *handlerStateReplayStore) SaveOneTimeCode(_ context.Context, code model.OneTimeCode) (string, error) {
+	return base64.RawURLEncoding.EncodeToString(code.Code), nil
+}
+
+func (s *handlerStateReplayStore) ConsumeTelegramState(_ context.Context, signature string, _ time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.consumed[signature] {
+		return false, nil
+	}
+	s.consumed[signature] = true
+	return true, nil
 }

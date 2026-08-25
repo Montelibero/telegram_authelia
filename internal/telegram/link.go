@@ -50,8 +50,8 @@ func NewLinkService(client loginClient, states *StateStore, store IdentityLinkSt
 }
 
 // Begin creates a linking flow bound to the current local username.
-func (s *LinkService) Begin(username string) (authorizationURL, state string, err error) {
-	flow, err := s.states.CreateLink(username)
+func (s *LinkService) Begin(ctx context.Context, username string) (authorizationURL, state string, err error) {
+	flow, err := s.states.CreateLink(ctx, username)
 	if err != nil {
 		return "", "", err
 	}
@@ -60,7 +60,7 @@ func (s *LinkService) Begin(username string) (authorizationURL, state string, er
 
 // Complete verifies the callback and links it only to the initiating current user.
 func (s *LinkService) Complete(ctx context.Context, currentUsername, state, code string) error {
-	flow, err := s.states.Consume(state)
+	flow, err := s.states.Consume(ctx, state)
 	if err != nil {
 		return err
 	}
