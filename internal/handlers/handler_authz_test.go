@@ -1251,7 +1251,7 @@ func (s *AuthzSuite) TestShouldForwardSQLUserAttributes() {
 		Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true, Verified: true}},
 		Groups: []string{"admins", "app:grafana"},
 	}}))
-	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	s.Require().NoError(provider.StartupCheck())
 	details, err := provider.GetDetails("bublik")
 	s.Require().NoError(err)

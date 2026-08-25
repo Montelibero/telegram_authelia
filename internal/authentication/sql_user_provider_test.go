@@ -22,7 +22,7 @@ func TestSQLUserProviderContract(t *testing.T) {
 		"disabled": {User: model.MTLUser{ID: 2, Username: "disabled", Status: model.MTLUserStatusDisabled, PasswordHash: sql.NullString{String: password, Valid: true}}},
 		"telegram": {User: model.MTLUser{ID: 3, Username: "telegram", Status: model.MTLUserStatusActive}},
 	}}
-	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
 
 	valid, err := provider.CheckUserPassword("active", "password")
@@ -57,11 +57,29 @@ func TestSQLUserProviderContract(t *testing.T) {
 	require.NoError(t, provider.Close())
 }
 
+func TestSQLUserProviderStartupReconcilesEnabledApplicationGroups(t *testing.T) {
+	disabled := false
+	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{}}
+	provider := NewSQLUserProvider(
+		&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig},
+		store,
+		[]schema.Application{
+			{Slug: "grafana"},
+			{Slug: "shared-one", Group: "shared"},
+			{Slug: "shared-two", Group: "shared"},
+			{Slug: "disabled", Enabled: &disabled},
+		},
+	)
+
+	require.NoError(t, provider.StartupCheck())
+	assert.Equal(t, []string{"app:grafana", "shared"}, store.reconciledGroups)
+}
+
 func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
 		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4}, PrimaryEmail: "active@eurmtl.me"},
 	}}
-	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
 
 	assert.ErrorIs(t, provider.ChangePassword("active", "wrong", "new-password"), ErrIncorrectPassword)
@@ -81,7 +99,13 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 }
 
 type testSQLUserStore struct {
-	users map[string]model.MTLUserDetails
+	users            map[string]model.MTLUserDetails
+	reconciledGroups []string
+}
+
+func (s *testSQLUserStore) ReconcileMTLGroups(_ context.Context, groups []string) error {
+	s.reconciledGroups = append([]string(nil), groups...)
+	return nil
 }
 
 func (s *testSQLUserStore) MigrateMTL(context.Context) error {

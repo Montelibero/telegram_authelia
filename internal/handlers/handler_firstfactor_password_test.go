@@ -41,7 +41,7 @@ func TestFirstFactorPasswordSQLUserProvider(t *testing.T) {
 		Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true, Verified: true}},
 		Groups: []string{"admins", "app:grafana"},
 	}}))
-	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
 	mock.Ctx.Providers.UserProvider = provider
 
@@ -74,7 +74,7 @@ func TestFirstFactorPasswordSQLDisabledUser(t *testing.T) {
 		Username: "disabled", DisplayName: "Disabled", Status: model.MTLUserStatusDisabled, PasswordHash: &password,
 		Emails: []model.MTLUserImportEmail{{Email: "disabled@eurmtl.me", Primary: true}},
 	}}))
-	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store)
+	provider := authentication.NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
 	mock.Ctx.Providers.UserProvider = provider
 

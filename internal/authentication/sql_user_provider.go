@@ -14,14 +14,15 @@ import (
 
 // SQLUserProvider authenticates overlay users through the existing storage provider.
 type SQLUserProvider struct {
-	config *schema.AuthenticationBackendSQL
-	store  SQLUserStore
-	hash   algorithm.Hash
+	config       *schema.AuthenticationBackendSQL
+	applications []schema.Application
+	store        SQLUserStore
+	hash         algorithm.Hash
 }
 
 // NewSQLUserProvider constructs a SQL user provider without taking ownership of its store.
-func NewSQLUserProvider(config *schema.AuthenticationBackendSQL, store SQLUserStore) *SQLUserProvider {
-	return &SQLUserProvider{config: config, store: store}
+func NewSQLUserProvider(config *schema.AuthenticationBackendSQL, store SQLUserStore, applications []schema.Application) *SQLUserProvider {
+	return &SQLUserProvider{config: config, applications: append([]schema.Application(nil), applications...), store: store}
 }
 
 // StartupCheck initializes password hashing for updates.
@@ -34,8 +35,37 @@ func (p *SQLUserProvider) StartupCheck() (err error) {
 		return fmt.Errorf("failed to migrate SQL user store: %w", err)
 	}
 
+	if err = p.store.ReconcileMTLGroups(context.Background(), applicationGroups(p.applications)); err != nil {
+		return fmt.Errorf("failed to reconcile SQL user groups: %w", err)
+	}
+
 	p.hash, err = NewFileCryptoHashFromConfig(p.config.Password)
 	return err
+}
+
+func applicationGroups(applications []schema.Application) []string {
+	groups := make([]string, 0, len(applications))
+	seen := make(map[string]struct{}, len(applications))
+
+	for _, application := range applications {
+		if !application.IsEnabled() {
+			continue
+		}
+
+		group := application.Group
+		if group == "" {
+			group = "app:" + application.Slug
+		}
+
+		if _, ok := seen[group]; ok {
+			continue
+		}
+
+		seen[group] = struct{}{}
+		groups = append(groups, group)
+	}
+
+	return groups
 }
 
 // CheckUserPassword checks a stored Authelia password digest.
