@@ -76,6 +76,9 @@ func (p *SQLProvider) RenameMTLAdminGroup(ctx context.Context, name, newName str
 	if affected, err = loadMTLAdminGroupUsers(ctx, tx, groupID); err != nil {
 		return details, nil, err
 	}
+	if err = bumpMTLAdminGroupUserEpochs(ctx, tx, groupID); err != nil {
+		return details, nil, err
+	}
 	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
 	if err != nil {
 		return details, nil, err
@@ -109,6 +112,9 @@ func (p *SQLProvider) DeleteMTLAdminGroup(ctx context.Context, name string, expe
 		return nil, err
 	}
 	if affected, err = loadMTLAdminGroupUsers(ctx, tx, groupID); err != nil {
+		return nil, err
+	}
+	if err = bumpMTLAdminGroupUserEpochs(ctx, tx, groupID); err != nil {
 		return nil, err
 	}
 	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
@@ -184,6 +190,9 @@ func (p *SQLProvider) mutateMTLAdminGroupUser(ctx context.Context, name, usernam
 	if err = bumpMTLAdminGroupVersion(ctx, tx, groupID, expectedVersion); err != nil {
 		return details, err
 	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`), userID); err != nil {
+		return details, fmt.Errorf("failed to revoke MTL admin group user sessions: %w", err)
+	}
 	if err = auditMTLAdmin(ctx, tx, actorID, event, "group", name); err != nil {
 		return details, err
 	}
@@ -225,4 +234,11 @@ func bumpMTLAdminGroupVersion(ctx context.Context, tx SQLXTx, groupID int64, exp
 		return fmt.Errorf("failed to bump MTL admin group version: %w", err)
 	}
 	return requireMTLAdminRow(result)
+}
+
+func bumpMTLAdminGroupUserEpochs(ctx context.Context, tx SQLXTx, groupID int64) error {
+	if _, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP WHERE id IN (SELECT user_id FROM mtl_group_memberships WHERE group_id = ?)`), groupID); err != nil {
+		return fmt.Errorf("failed to revoke MTL admin group sessions: %w", err)
+	}
+	return nil
 }

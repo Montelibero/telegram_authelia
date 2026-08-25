@@ -484,6 +484,12 @@ func handleAuthnCookieValidate(ctx AuthzContext, manager session.Manager, userSe
 		return modified, true
 	}
 
+	if epochModified, epochInvalid := handleSessionValidateEpoch(ctx, userSession); epochInvalid {
+		return modified, true
+	} else if epochModified {
+		modified = true
+	}
+
 	if modified, invalid = handleSessionValidateRefresh(ctx, userSession, refresh); invalid {
 		return modified, true
 	}
@@ -501,6 +507,27 @@ func handleAuthnCookieValidate(ctx AuthzContext, manager session.Manager, userSe
 	}
 
 	return modified, false
+}
+
+func handleSessionValidateEpoch(ctx AuthzContext, userSession *session.UserSession) (modified, invalid bool) {
+	if userSession.IsAnonymous() {
+		return false, false
+	}
+	provider, managed := ctx.GetUserProvider().(interface{ IsMTLProvider() bool })
+	if !managed || !provider.IsMTLProvider() {
+		return false, false
+	}
+	if userSession.SessionEpoch == nil {
+		return false, true
+	}
+	details, err := ctx.GetUserProvider().GetDetails(userSession.Username)
+	if err != nil {
+		return false, true
+	}
+	if details.SessionEpoch == nil {
+		return false, true
+	}
+	return false, *details.SessionEpoch != *userSession.SessionEpoch
 }
 
 func handleAuthnCookieValidateInactivity(ctx AuthzContext, manager session.Manager, userSession *session.UserSession, isAnonymous bool) (invalid bool) {

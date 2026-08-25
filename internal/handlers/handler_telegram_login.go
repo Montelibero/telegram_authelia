@@ -89,10 +89,11 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 	}
 
 	details := &authentication.UserDetails{
-		Username:    result.Details.User.Username,
-		DisplayName: result.Details.User.DisplayName,
-		Emails:      []string{result.Details.PrimaryEmail},
-		Groups:      result.Details.Groups,
+		Username:     result.Details.User.Username,
+		DisplayName:  result.Details.User.DisplayName,
+		Emails:       []string{result.Details.PrimaryEmail},
+		Groups:       result.Details.Groups,
+		SessionEpoch: &result.Details.User.SessionEpoch,
 	}
 	provider, err := ctx.GetSessionProvider()
 	if err != nil {

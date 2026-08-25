@@ -16,6 +16,10 @@ func RequireAdmin(next RequestHandler) RequestHandler {
 			ctx.ReplyUnauthorized()
 			return
 		}
+		if !validateMTLSession(ctx, &userSession) {
+			ctx.ReplyUnauthorized()
+			return
+		}
 		if !slices.Contains(userSession.Groups, adminGroup) {
 			ctx.ReplyForbidden()
 			return

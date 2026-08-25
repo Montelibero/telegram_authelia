@@ -8,9 +8,30 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/mocks"
 )
+
+func TestRequireAdminRejectsRevokedMTLSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+	sessionEpoch := 1
+	currentEpoch := 2
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.Groups = []string{"admins"}
+	userSession.SessionEpoch = &sessionEpoch
+	userSession.AuthenticationMethodRefs.External = true
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+	mock.Ctx.Providers.UserProvider = mtlTestUserProvider{mock.UserProviderMock}
+	mock.UserProviderMock.EXPECT().GetDetails(john).Return(&authentication.UserDetails{Username: john, SessionEpoch: &currentEpoch}, nil)
+
+	middlewares.RequireAdmin(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusUnauthorized, mock.Ctx.Response.StatusCode())
+}
 
 func TestRequireAdmin(t *testing.T) {
 	tests := []struct {
