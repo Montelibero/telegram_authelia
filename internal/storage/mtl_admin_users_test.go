@@ -26,6 +26,8 @@ func TestMTLAdminUserLifecycle(t *testing.T) {
 	assert.Equal(t, "bublik@eurmtl.me", details.PrimaryEmail)
 	require.Len(t, details.Emails, 1)
 	assert.True(t, details.Emails[0].Verified)
+	assert.NotNil(t, details.Groups)
+	assert.NotNil(t, details.Identities)
 
 	users, err := provider.ListMTLAdminUsers(ctx)
 	require.NoError(t, err)
