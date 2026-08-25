@@ -146,6 +146,13 @@ func TestReconcileMTLGroupsCreatesOnlyMissingGroups(t *testing.T) {
 	assert.Zero(t, groups[1].UserCount)
 }
 
+func TestReconcileMTLGroupsQueriesOnlyIgnoreDuplicateNames(t *testing.T) {
+	assert.Equal(t, `INSERT INTO mtl_groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`, reconcileMTLGroupQuery(providerSQLite))
+	assert.Equal(t, `INSERT INTO mtl_groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`, reconcileMTLGroupQuery(providerPostgres))
+	assert.Equal(t, `INSERT INTO mtl_groups (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name`, reconcileMTLGroupQuery(providerMySQL))
+	assert.NotContains(t, reconcileMTLGroupQuery(providerMySQL), "IGNORE")
+}
+
 func TestReconcileMTLGroupsIsSafeAcrossConcurrentProviders(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db.sqlite3")
 	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: path}}}

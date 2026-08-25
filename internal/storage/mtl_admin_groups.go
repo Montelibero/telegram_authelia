@@ -16,11 +16,7 @@ var (
 
 // ReconcileMTLGroups creates configured groups which do not exist yet. Existing groups and memberships are unchanged.
 func (p *SQLProvider) ReconcileMTLGroups(ctx context.Context, groups []string) (err error) {
-	query := `INSERT INTO mtl_groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`
-	if p.name == providerMySQL {
-		query = `INSERT IGNORE INTO mtl_groups (name) VALUES (?)`
-	}
-	query = p.db.Rebind(query)
+	query := p.db.Rebind(reconcileMTLGroupQuery(p.name))
 
 	seen := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
@@ -35,6 +31,14 @@ func (p *SQLProvider) ReconcileMTLGroups(ctx context.Context, groups []string) (
 	}
 
 	return nil
+}
+
+func reconcileMTLGroupQuery(provider string) string {
+	if provider == providerMySQL {
+		return `INSERT INTO mtl_groups (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name`
+	}
+
+	return `INSERT INTO mtl_groups (name) VALUES (?) ON CONFLICT(name) DO NOTHING`
 }
 
 // ListMTLAdminGroups returns groups and membership counts in name order.
