@@ -36,6 +36,56 @@ import (
 	"github.com/authelia/authelia/v4/internal/webauthn"
 )
 
+type storageUserIdentityStore interface {
+	LinkMTLUserIdentity(ctx context.Context, username, provider, providerUserID, providerUsername string) error
+	LoadMTLUserIdentity(ctx context.Context, username, provider string) (model.MTLUserIdentity, bool, error)
+	UnlinkMTLUserIdentity(ctx context.Context, username, provider string) error
+}
+
+func runStorageUserIdentityLink(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider, providerUserID, providerUsername string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	if err := store.LinkMTLUserIdentity(ctx, username, identityProvider, providerUserID, providerUsername); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(w, "Linked %s identity to user %s.\n", identityProvider, username)
+	return nil
+}
+
+func runStorageUserIdentityShow(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	identity, found, err := store.LoadMTLUserIdentity(ctx, username, identityProvider)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return storage.ErrMTLIdentityNotFound
+	}
+	providerUsername := ""
+	if identity.ProviderUsername != nil {
+		providerUsername = *identity.ProviderUsername
+	}
+	_, _ = fmt.Fprintf(w, "User: %s\nProvider: %s\nProvider user ID: %s\nProvider username: %s\n", username, identity.Provider, identity.ProviderUserID, providerUsername)
+	return nil
+}
+
+func runStorageUserIdentityUnlink(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	if err := store.UnlinkMTLUserIdentity(ctx, username, identityProvider); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(w, "Unlinked %s identity from user %s.\n", identityProvider, username)
+	return nil
+}
+
 // StorageUserImportRunE imports file-backed users into the SQL user store.
 func (ctx *CmdCtx) StorageUserImportRunE(cmd *cobra.Command, _ []string) (err error) {
 	from, err := cmd.Flags().GetString(cmdFlagNameFrom)

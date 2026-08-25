@@ -102,6 +102,42 @@ func TestMTLUserStoreRejectsMissingPrimaryEmail(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrMTLPrimaryEmailRequired))
 }
 
+func TestMTLUserIdentityLifecycle(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	require.NoError(t, provider.ImportMTLUsers(ctx, []model.MTLUserImport{
+		{Username: "bublik", DisplayName: "Bublik", Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true}}},
+		{Username: "other", DisplayName: "Other", Emails: []model.MTLUserImportEmail{{Email: "other@eurmtl.me", Primary: true}}},
+	}))
+
+	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "bublik", "telegram", "987654321", "bublik_tg"))
+	identity, found, err := provider.LoadMTLUserIdentity(ctx, "bublik", "telegram")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "987654321", identity.ProviderUserID)
+	assert.Equal(t, "bublik_tg", *identity.ProviderUsername)
+
+	details, found, err := provider.LoadMTLUserByIdentity(ctx, "telegram", "987654321")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "bublik", details.User.Username)
+
+	err = provider.LinkMTLUserIdentity(ctx, "other", "telegram", "987654321", "other_tg")
+	assert.ErrorIs(t, err, ErrMTLConflict)
+	err = provider.LinkMTLUserIdentity(ctx, "missing", "telegram", "1", "missing")
+	assert.ErrorIs(t, err, ErrMTLUserNotFound)
+
+	require.NoError(t, provider.UnlinkMTLUserIdentity(ctx, "bublik", "telegram"))
+	_, found, err = provider.LoadMTLUserByIdentity(ctx, "telegram", "987654321")
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.ErrorIs(t, provider.UnlinkMTLUserIdentity(ctx, "bublik", "telegram"), ErrMTLIdentityNotFound)
+
+	var auditCount int
+	require.NoError(t, provider.db.Get(&auditCount, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type IN ('identity.linked', 'identity.unlinked')`))
+	assert.Equal(t, 2, auditCount)
+}
+
 func newTestMTLUserProvider(t *testing.T) *SQLiteProvider {
 	t.Helper()
 	provider := newTestSQLiteProvider(t)

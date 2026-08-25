@@ -408,11 +408,56 @@ func newStorageUserCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 
 	cmd.AddCommand(
 		newStorageUserImportCmd(ctx),
+		newStorageUserIdentityCmd(ctx),
 		newStorageUserIdentifiersCmd(ctx),
 		newStorageUserTOTPCmd(ctx),
 		newStorageUserWebAuthnCmd(ctx),
 	)
 
+	return cmd
+}
+
+func newStorageUserIdentityCmd(ctx *CmdCtx) *cobra.Command {
+	cmd := &cobra.Command{Use: "identity", Short: "Manage external identities for SQL users", Args: cobra.NoArgs, DisableAutoGenTag: true}
+	cmd.AddCommand(newStorageUserIdentityLinkCmd(ctx), newStorageUserIdentityShowCmd(ctx), newStorageUserIdentityUnlinkCmd(ctx))
+	return cmd
+}
+
+func newStorageUserIdentityLinkCmd(ctx *CmdCtx) *cobra.Command {
+	cmd := &cobra.Command{Use: "link USER", Short: "Link an external identity", Args: cobra.ExactArgs(1), DisableAutoGenTag: true}
+	cmd.Flags().String("provider", "", "identity provider name")
+	cmd.Flags().String("provider-user-id", "", "stable provider user ID")
+	cmd.Flags().String("provider-username", "", "current provider username for display")
+	_ = cmd.MarkFlagRequired("provider")
+	_ = cmd.MarkFlagRequired("provider-user-id")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		provider, _ := cmd.Flags().GetString("provider")
+		providerUserID, _ := cmd.Flags().GetString("provider-user-id")
+		providerUsername, _ := cmd.Flags().GetString("provider-username")
+		return runStorageUserIdentityLink(cmd.Context(), cmd.OutOrStdout(), ctx.providers.StorageProvider, args[0], provider, providerUserID, providerUsername)
+	}
+	return cmd
+}
+
+func newStorageUserIdentityShowCmd(ctx *CmdCtx) *cobra.Command {
+	cmd := &cobra.Command{Use: "show USER", Short: "Show an external identity", Args: cobra.ExactArgs(1), DisableAutoGenTag: true}
+	cmd.Flags().String("provider", "", "identity provider name")
+	_ = cmd.MarkFlagRequired("provider")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		provider, _ := cmd.Flags().GetString("provider")
+		return runStorageUserIdentityShow(cmd.Context(), cmd.OutOrStdout(), ctx.providers.StorageProvider, args[0], provider)
+	}
+	return cmd
+}
+
+func newStorageUserIdentityUnlinkCmd(ctx *CmdCtx) *cobra.Command {
+	cmd := &cobra.Command{Use: "unlink USER", Short: "Unlink an external identity", Args: cobra.ExactArgs(1), DisableAutoGenTag: true}
+	cmd.Flags().String("provider", "", "identity provider name")
+	_ = cmd.MarkFlagRequired("provider")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		provider, _ := cmd.Flags().GetString("provider")
+		return runStorageUserIdentityUnlink(cmd.Context(), cmd.OutOrStdout(), ctx.providers.StorageProvider, args[0], provider)
+	}
 	return cmd
 }
 

@@ -16,7 +16,109 @@ var (
 	ErrMTLVersionConflict      = errors.New("MTL user version conflict")
 	ErrMTLConflict             = errors.New("MTL user data conflict")
 	ErrMTLPrimaryEmailRequired = errors.New("MTL user requires exactly one primary email")
+	ErrMTLUserNotFound         = errors.New("MTL user not found")
+	ErrMTLIdentityNotFound     = errors.New("MTL user identity not found")
 )
+
+// LinkMTLUserIdentity links a stable provider identity to an existing local user.
+func (p *SQLProvider) LinkMTLUserIdentity(ctx context.Context, username, provider, providerUserID, providerUsername string) (err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin MTL identity link: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var userID int64
+	if err = tx.GetContext(ctx, &userID, tx.Rebind(`SELECT id FROM mtl_users WHERE username = ?`), username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrMTLUserNotFound
+		}
+		return fmt.Errorf("failed to load MTL identity user: %w", err)
+	}
+
+	var display any
+	if providerUsername != "" {
+		display = providerUsername
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, ?, ?, ?)`), userID, provider, providerUserID, display); err != nil {
+		return mapMTLConflict("failed to link MTL user identity", err)
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, 'identity.linked', 'user', ?)`), userID, username); err != nil {
+		return fmt.Errorf("failed to audit MTL identity link: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit MTL identity link: %w", err)
+	}
+	return nil
+}
+
+// LoadMTLUserIdentity loads one provider identity for a local username.
+func (p *SQLProvider) LoadMTLUserIdentity(ctx context.Context, username, provider string) (identity model.MTLUserIdentity, found bool, err error) {
+	query := p.db.Rebind(`SELECT i.id, i.user_id, i.provider, i.provider_user_id, i.provider_username, i.created_at, i.updated_at FROM mtl_user_identities i INNER JOIN mtl_users u ON u.id = i.user_id WHERE u.username = ? AND i.provider = ?`)
+	if err = p.db.GetContext(ctx, &identity, query, username, provider); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return identity, false, nil
+		}
+		return identity, false, fmt.Errorf("failed to load MTL user identity: %w", err)
+	}
+	return identity, true, nil
+}
+
+// LoadMTLUserByIdentity resolves a stable provider identity to local user details.
+func (p *SQLProvider) LoadMTLUserByIdentity(ctx context.Context, provider, providerUserID string) (details model.MTLUserDetails, found bool, err error) {
+	var username string
+	query := p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_user_identities i ON i.user_id = u.id WHERE i.provider = ? AND i.provider_user_id = ?`)
+	if err = p.db.GetContext(ctx, &username, query, provider, providerUserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return details, false, nil
+		}
+		return details, false, fmt.Errorf("failed to resolve MTL user identity: %w", err)
+	}
+	return p.LoadMTLUser(ctx, username)
+}
+
+// UnlinkMTLUserIdentity removes a provider identity from the exact local username.
+func (p *SQLProvider) UnlinkMTLUserIdentity(ctx context.Context, username, provider string) (err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin MTL identity unlink: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var userID int64
+	if err = tx.GetContext(ctx, &userID, tx.Rebind(`SELECT id FROM mtl_users WHERE username = ?`), username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrMTLUserNotFound
+		}
+		return fmt.Errorf("failed to load MTL identity user: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM mtl_user_identities WHERE user_id = ? AND provider = ?`), userID, provider)
+	if err != nil {
+		return fmt.Errorf("failed to unlink MTL user identity: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check MTL identity unlink: %w", err)
+	}
+	if affected != 1 {
+		return ErrMTLIdentityNotFound
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, 'identity.unlinked', 'user', ?)`), userID, username); err != nil {
+		return fmt.Errorf("failed to audit MTL identity unlink: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit MTL identity unlink: %w", err)
+	}
+	return nil
+}
 
 // LoadMTLUser loads the authentication-facing details for a local user.
 func (p *SQLProvider) LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error) {
