@@ -97,6 +97,32 @@ func TestMTLAdminGroupConflictsAndAudit(t *testing.T) {
 	assert.Equal(t, 1, events)
 }
 
+func TestMTLAdminGroupMembershipFailuresRollBack(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := t.Context()
+	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com"}, "")
+	require.NoError(t, err)
+	group, err := provider.CreateMTLAdminGroup(ctx, "app:grafana", "admin")
+	require.NoError(t, err)
+	group, err = provider.AddMTLAdminGroupUser(ctx, group.Name, "admin", group.Version, "admin")
+	require.NoError(t, err)
+
+	_, err = provider.AddMTLAdminGroupUser(ctx, group.Name, "admin", group.Version, "admin")
+	assert.ErrorIs(t, err, ErrMTLConflict)
+	_, err = provider.RemoveMTLAdminGroupUser(ctx, group.Name, "admin", group.Version-1, "admin")
+	assert.ErrorIs(t, err, ErrMTLVersionConflict)
+
+	current, found, err := provider.LoadMTLAdminGroup(ctx, group.Name)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, group.Version, current.Version)
+	assert.Equal(t, []string{"admin"}, current.Users)
+	user, found, err := provider.LoadMTLAdminUser(ctx, "admin")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 1, user.SessionEpoch)
+}
+
 func TestReconcileMTLGroupsCreatesOnlyMissingGroups(t *testing.T) {
 	provider := newTestMTLUserProvider(t)
 	ctx := context.Background()

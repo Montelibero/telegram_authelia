@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/valyala/fasthttp"
 
@@ -16,6 +17,14 @@ import (
 type adminApplicationStore interface {
 	ListMTLAdminUsers(context.Context) ([]model.MTLAdminUserSummary, error)
 	ListMTLAdminGroups(context.Context) ([]model.MTLAdminGroupSummary, error)
+	AddMTLAdminGroupUser(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
+	RemoveMTLAdminGroupUser(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
+}
+
+type adminApplicationUserRequest struct {
+	Slug            string `json:"slug"`
+	Username        string `json:"username"`
+	ExpectedVersion int    `json:"expected_version"`
 }
 
 type adminApplicationUserResponse struct {
@@ -44,15 +53,60 @@ func AdminApplicationsGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
-	users, err := store.ListMTLAdminUsers(ctx)
+	response, err := loadAdminApplications(ctx, store)
+	adminAPIRespond(ctx, response, fasthttp.StatusOK, err)
+}
+
+// AdminApplicationUserPUT grants a configured application permission to a user.
+func AdminApplicationUserPUT(ctx *middlewares.AutheliaCtx) {
+	adminApplicationUserMutation(ctx, true)
+}
+
+// AdminApplicationUserDELETE revokes a configured application permission from a user.
+func AdminApplicationUserDELETE(ctx *middlewares.AutheliaCtx) {
+	adminApplicationUserMutation(ctx, false)
+}
+
+func adminApplicationUserMutation(ctx *middlewares.AutheliaCtx, grant bool) {
+	var request adminApplicationUserRequest
+	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	application, found := configuredApplication(ctx.Configuration.Applications, request.Slug)
+	if !found {
+		adminAPIError(ctx, storage.ErrMTLGroupNotFound)
+		return
+	}
+	store, ok := ctx.Providers.StorageProvider.(adminApplicationStore)
+	if !ok {
+		adminAPIError(ctx, errors.New("admin application storage is unavailable"))
+		return
+	}
+
+	group := applicationGroup(application)
+	var err error
+	if grant {
+		_, err = store.AddMTLAdminGroupUser(ctx, group, request.Username, request.ExpectedVersion, adminAPIActor(ctx))
+	} else {
+		_, err = store.RemoveMTLAdminGroupUser(ctx, group, request.Username, request.ExpectedVersion, adminAPIActor(ctx))
+	}
 	if err != nil {
 		adminAPIError(ctx, err)
 		return
 	}
+
+	response, err := loadAdminApplications(ctx, store)
+	adminAPIRespond(ctx, response, fasthttp.StatusOK, err)
+}
+
+func loadAdminApplications(ctx *middlewares.AutheliaCtx, store adminApplicationStore) ([]adminApplicationResponse, error) {
+	users, err := store.ListMTLAdminUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
 	groups, err := store.ListMTLAdminGroups(ctx)
 	if err != nil {
-		adminAPIError(ctx, err)
-		return
+		return nil, err
 	}
 
 	versions := make(map[string]int, len(groups))
@@ -68,8 +122,7 @@ func AdminApplicationsGET(ctx *middlewares.AutheliaCtx) {
 		group := applicationGroup(application)
 		version, found := versions[group]
 		if !found {
-			adminAPIError(ctx, storage.ErrMTLGroupNotFound)
-			return
+			return nil, storage.ErrMTLGroupNotFound
 		}
 
 		item := adminApplicationResponse{
@@ -86,7 +139,16 @@ func AdminApplicationsGET(ctx *middlewares.AutheliaCtx) {
 		response = append(response, item)
 	}
 
-	adminAPIRespond(ctx, response, fasthttp.StatusOK, nil)
+	return response, nil
+}
+
+func configuredApplication(applications []schema.Application, slug string) (schema.Application, bool) {
+	for _, application := range applications {
+		if application.Slug == slug && application.IsEnabled() && !strings.EqualFold(applicationGroup(application), "admins") {
+			return application, true
+		}
+	}
+	return schema.Application{}, false
 }
 
 func applicationGroup(application schema.Application) string {

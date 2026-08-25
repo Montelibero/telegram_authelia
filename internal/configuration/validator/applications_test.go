@@ -54,4 +54,14 @@ func TestValidateApplications(t *testing.T) {
 		assert.Equal(t, "shared", applications[2].Group)
 		assert.Equal(t, applications[2].Group, applications[3].Group)
 	})
+
+	t.Run("ShouldRejectReservedAdminGroup", func(t *testing.T) {
+		applications := []schema.Application{{Slug: "control", Name: "Control", Domain: "control.example.com", Group: "AdMiNs"}}
+		validator := schema.NewStructValidator()
+
+		ValidateApplications(&applications, validator)
+
+		require.Len(t, validator.Errors(), 1)
+		assert.EqualError(t, validator.Errors()[0], "applications: group 'admins' is reserved for administrative access in entry 1")
+	})
 }

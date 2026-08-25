@@ -33,5 +33,8 @@ func ValidateApplications(config *[]schema.Application, validator *schema.Struct
 		if application.Group == "" && application.Slug != "" {
 			application.Group = "app:" + application.Slug
 		}
+		if strings.EqualFold(application.Group, "admins") {
+			validator.Push(fmt.Errorf("applications: group 'admins' is reserved for administrative access in entry %d", entry))
+		}
 	}
 }

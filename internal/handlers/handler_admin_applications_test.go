@@ -64,3 +64,107 @@ func TestAdminApplicationsGETReportsUnavailableBackingGroup(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusNotFound, mock.Ctx.Response.StatusCode())
 	assert.NotContains(t, string(mock.Ctx.Response.Body()), "grafana.example.com")
 }
+
+func TestAdminApplicationUserMutationGrantRevokeDuplicatesAndStaleVersion(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	mock.Ctx.Configuration.Applications = []schema.Application{
+		{Slug: "grafana", Name: "Grafana", Domain: "grafana.example.com"},
+		{Slug: "grafana-alias", Name: "Grafana Alias", Domain: "alias.example.com", Group: "app:grafana"},
+	}
+	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"app:grafana"}))
+	_, err := store.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "bublik", Email: "bublik@example.com"}, "admin")
+	require.NoError(t, err)
+	group, found, err := store.LoadMTLAdminGroup(t.Context(), "app:grafana")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminApplicationUserPUT(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.Equal(t, 2, permissionResponseGrantedCount(t, mock.Ctx.Response.Body(), "bublik"))
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version+1) + `}`)
+	AdminApplicationUserPUT(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminApplicationUserDELETE(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version+1) + `}`)
+	AdminApplicationUserDELETE(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.Zero(t, permissionResponseGrantedCount(t, mock.Ctx.Response.Body(), "bublik"))
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version+2) + `}`)
+	AdminApplicationUserDELETE(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusNotFound, mock.Ctx.Response.StatusCode())
+}
+
+func TestAdminApplicationUserMutationRejectsUnconfiguredOrDisabledSlug(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	disabled := false
+	mock.Ctx.Configuration.Applications = []schema.Application{{Slug: "disabled", Name: "Disabled", Domain: "disabled.example.com", Enabled: &disabled}}
+	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"app:unconfigured"}))
+
+	for _, slug := range []string{"unconfigured", "disabled"} {
+		mock.Ctx.Response.Reset()
+		mock.Ctx.Request.SetBodyString(`{"slug":"` + slug + `","username":"admin","expected_version":0}`)
+		AdminApplicationUserPUT(mock.Ctx)
+		assert.Equal(t, fasthttp.StatusNotFound, mock.Ctx.Response.StatusCode())
+	}
+
+	group, found, err := store.LoadMTLAdminGroup(t.Context(), "app:unconfigured")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Empty(t, group.Users)
+}
+
+func TestAdminApplicationUserMutationCannotChangeAdministrators(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	mock.Ctx.Configuration.Applications = []schema.Application{{Slug: "control", Name: "Control", Domain: "control.example.com", Group: "Admins"}}
+	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"admins"}))
+	_, err := store.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "bublik", Email: "bublik@example.com"}, "admin")
+	require.NoError(t, err)
+	group, found, err := store.LoadMTLAdminGroup(t.Context(), "admins")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	mock.Ctx.Request.SetBodyString(`{"slug":"control","username":"bublik","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminApplicationUserPUT(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusNotFound, mock.Ctx.Response.StatusCode())
+	group, _, err = store.LoadMTLAdminGroup(t.Context(), "admins")
+	require.NoError(t, err)
+	assert.Empty(t, group.Users)
+
+	group, err = store.AddMTLAdminGroupUser(t.Context(), "admins", "bublik", group.Version, "admin")
+	require.NoError(t, err)
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"slug":"control","username":"bublik","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminApplicationUserDELETE(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusNotFound, mock.Ctx.Response.StatusCode())
+	group, _, err = store.LoadMTLAdminGroup(t.Context(), "admins")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"bublik"}, group.Users)
+}
+
+func permissionResponseGrantedCount(t *testing.T, body []byte, username string) int {
+	t.Helper()
+	var response struct {
+		Data []adminApplicationResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response))
+	count := 0
+	for _, application := range response.Data {
+		for _, user := range application.Users {
+			if user.Username == username && user.Granted {
+				count++
+			}
+		}
+	}
+	return count
+}
