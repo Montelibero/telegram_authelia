@@ -31,7 +31,7 @@ Approval never grants `admins` or `app:*`. The next Telegram login creates the o
 
 ## CLI
 
-The command group is `authelia storage user registration` with `list`, `show`, `approve`, and `reject`. Every level has Cobra help, examples, and discoverable subcommands. Running the group without a subcommand prints help instead of returning an opaque error.
+The command group is `authelia storage registration` with `list`, `show`, `approve`, and `reject`. Every level has Cobra help, examples, and discoverable subcommands. Running the group without a subcommand prints help instead of returning an opaque error.
 
 Approval accepts the exact request ID and expected version. Optional `--username` and `--email` override proposals. Reject accepts the exact request ID and expected version. Output excludes OAuth codes, tokens, secrets, and complete Telegram profiles.
 

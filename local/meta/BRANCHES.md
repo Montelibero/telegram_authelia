@@ -17,7 +17,7 @@ This file records the branches used to assemble `deploy`. Update it whenever an 
 | Order | Branch | Type | Depends on | Purpose | Status |
 |---:|---|---|---|---|---|
 | 10 | `local/meta` | local | `release-base` | Fork workflow, branch registry, runbooks, and agent instructions | Active |
-| 20 | `local/auth-overlay` | local | `release-base` | SQL users, Telegram authentication, migration, and later admin features | M1 ready |
+| 20 | `local/auth-overlay` | local | `release-base` | SQL users, Telegram authentication, migration, and later admin features | M2 ready |
 
 Temporary `security/CVE-*` overlays are inserted after `local/meta` and before product overlays. Each entry must identify the upstream commit and stable release that permits removal.
 
@@ -30,7 +30,7 @@ Temporary `security/CVE-*` overlays are inserted after `local/meta` and before p
 | `feat/telegram-account-linking` | `local/auth-overlay` | Link a stable Telegram numeric ID to an existing local user | Complete |
 | `feat/telegram-login` | `local/auth-overlay` | Telegram OIDC login with Authorization Code Flow and PKCE | Complete |
 | `feat/telegram-ui` | `local/auth-overlay` | Telegram sign-in and account-linking controls in the web UI | Complete |
-| `feat/telegram-registration` | `local/auth-overlay` | Store, review, approve, and reject pending Telegram registrations | Planned |
+| `feat/telegram-registration` | `local/auth-overlay` | Store, review, approve, and reject pending Telegram registrations | Complete |
 
 The approved product design is documented in `local/meta/telegram-auth-design.md`. The executable M0/M1 plan is in `local/meta/telegram-auth-implementation-plan.md`.
 The M0 migration and rollback procedure is documented in `local/meta/sql-user-cutover.md`.
