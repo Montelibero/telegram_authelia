@@ -1,7 +1,10 @@
 package middlewares
 
 import (
+	"context"
 	"crypto/x509"
+	"errors"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/regulation"
 	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/storage"
+	"github.com/authelia/authelia/v4/internal/telegram"
 	"github.com/authelia/authelia/v4/internal/templates"
 	"github.com/authelia/authelia/v4/internal/totp"
 	"github.com/authelia/authelia/v4/internal/webauthn"
@@ -46,6 +50,16 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	providers.TOTP = totp.NewTimeBasedProvider(config.TOTP)
 	providers.UserAttributeResolver = expression.NewUserAttributes(config)
 	providers.UserProvider = NewAuthenticationProvider(config, caCertPool, providers.StorageProvider)
+
+	if config.Telegram.Enabled {
+		if store, ok := providers.StorageProvider.(telegram.IdentityUserStore); !ok {
+			errs = append(errs, errors.New("configured storage provider is not compatible with Telegram identities"))
+		} else if client, err := telegram.NewClient(context.Background(), config.Telegram, nil); err != nil {
+			errs = append(errs, err)
+		} else {
+			providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(5*time.Minute, providers.Clock.Now, nil), store)
+		}
+	}
 
 	var err error
 	if providers.Templates, err = templates.New(templates.Config{EmailTemplatesPath: config.Notifier.TemplatePath}); err != nil {

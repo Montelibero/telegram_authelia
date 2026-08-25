@@ -260,6 +260,19 @@ func TestUserSession_SetTwoFactorWebAuthn(t *testing.T) {
 	}
 }
 
+func TestUserSession_SetOneFactorExternal(t *testing.T) {
+	now := time.Unix(1000, 0)
+	details := &authentication.UserDetails{Username: "bublik", DisplayName: "Bublik", Emails: []string{"bublik@eurmtl.me"}, Groups: []string{"app:grafana"}}
+	actual := &UserSession{}
+
+	actual.SetOneFactorExternal(now, details)
+
+	assert.Equal(t, authentication.OneFactor, actual.AuthenticationLevel(false))
+	assert.True(t, actual.AuthenticationMethodRefs.External)
+	assert.False(t, actual.AuthenticationMethodRefs.FactorKnowledge())
+	assert.False(t, actual.AuthenticationMethodRefs.FactorPossession())
+}
+
 func TestUserSession_Misc(t *testing.T) {
 	session := &UserSession{}
 

@@ -30,6 +30,8 @@ func NewAuthenticationMethodsReferencesFromClaim(claim []string) (amr Authentica
 			amr.WebAuthnUserVerified = true
 		case AMRUserPresence:
 			amr.WebAuthnUserPresence = true
+		case AMRFederated:
+			amr.External = true
 		default:
 			extras = append(extras, ref)
 		}
@@ -55,6 +57,7 @@ func NewAuthenticationMethodsReferencesFromClaim(claim []string) (amr Authentica
 
 // AuthenticationMethodsReferences holds AMR information.
 type AuthenticationMethodsReferences struct {
+	External                     bool
 	KnowledgeBasedAuthentication bool
 	UsernameAndPassword          bool
 	TOTP                         bool
@@ -103,6 +106,10 @@ func (r AuthenticationMethodsReferences) MultiChannelAuthentication() bool {
 //nolint:gocyclo // The function is simple to understand.
 func (r AuthenticationMethodsReferences) MarshalRFC8176() []string {
 	var amr []string
+
+	if r.External {
+		amr = append(amr, AMRFederated)
+	}
 
 	if r.UsernameAndPassword {
 		amr = append(amr, AMRPasswordBasedAuthentication)

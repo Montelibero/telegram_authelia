@@ -31,9 +31,17 @@ func (s *UserSession) AuthenticationLevel(passkey2FA bool) authentication.Level 
 		return authentication.TwoFactor
 	case s.AuthenticationMethodRefs.FactorPossession() || s.AuthenticationMethodRefs.FactorKnowledge():
 		return authentication.OneFactor
+	case s.AuthenticationMethodRefs.External:
+		return authentication.OneFactor
 	default:
 		return authentication.NotAuthenticated
 	}
+}
+
+// SetOneFactorExternal sets the expected values for federated first-factor authentication.
+func (s *UserSession) SetOneFactorExternal(now time.Time, details *authentication.UserDetails) {
+	s.setOneFactor(now, details, false)
+	s.AuthenticationMethodRefs.External = true
 }
 
 // SetOneFactorPassword sets the 1FA AMR's and expected property values for one factor password authentication.

@@ -257,6 +257,10 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 
 	r.POST("/api/firstfactor", middlewareAPI(handlers.FirstFactorPasswordPOST(delayerPassword)))
 	r.POST("/api/firstfactor/reauthenticate", middleware1FA(handlers.FirstFactorReauthenticatePOST(delayerPassword)))
+	if config.Telegram.Enabled {
+		r.GET("/api/telegram/login", middlewareAPI(handlers.TelegramLoginGET))
+		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
+	}
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))
 
 	// Only register endpoints if forgot password is not disabled.
