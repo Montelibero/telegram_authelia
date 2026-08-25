@@ -9,6 +9,7 @@ import {
     getRememberMe,
     getResetPassword,
     getResetPasswordCustomURL,
+    getTelegramLogin,
     getTheme,
 } from "@utils/Configuration";
 
@@ -60,6 +61,11 @@ it("returns true when reset password is enabled", () => {
 it("returns true when passkey login is enabled", () => {
     document.body.dataset.passkeylogin = "true";
     expect(getPasskeyLogin()).toBe(true);
+});
+
+it("returns true when Telegram login is enabled", () => {
+    document.body.dataset.telegramlogin = "true";
+    expect(getTelegramLogin()).toBe(true);
 });
 
 it("returns the reset password custom URL", () => {

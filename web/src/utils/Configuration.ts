@@ -27,6 +27,10 @@ export function getPasskeyLogin() {
     return getEmbeddedVariable("passkeylogin") === "true";
 }
 
+export function getTelegramLogin() {
+    return getEmbeddedVariable("telegramlogin") === "true";
+}
+
 export function getResetPasswordCustomURL() {
     return getEmbeddedVariable("resetpasswordcustomurl");
 }

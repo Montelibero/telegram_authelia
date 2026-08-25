@@ -84,6 +84,7 @@ const defaultProps = {
     rememberMe: true,
     resetPassword: true,
     resetPasswordCustomURL: "",
+    telegramLogin: false,
 };
 
 const mockNotificationsReturn: ReturnType<typeof useNotifications> = {

@@ -223,6 +223,7 @@ func NewTemplatedFileOptions(config *schema.Configuration) (opts *TemplatedFileO
 		AssetPath:               config.Server.AssetPath,
 		DuoSelfEnrollment:       strFalse,
 		PasskeyLogin:            strconv.FormatBool(config.WebAuthn.EnablePasskeyLogin),
+		TelegramLogin:           strconv.FormatBool(config.Telegram.Enabled),
 		RememberMe:              strconv.FormatBool(!config.Session.DisableRememberMe),
 		ResetPassword:           strconv.FormatBool(!config.AuthenticationBackend.PasswordReset.Disable),
 		ResetPasswordCustomURL:  config.AuthenticationBackend.PasswordReset.CustomURL.String(),
@@ -258,6 +259,7 @@ type TemplatedFileOptions struct {
 	AssetPath              string
 	DuoSelfEnrollment      string
 	PasskeyLogin           string
+	TelegramLogin          string
 	RememberMe             string
 	ResetPassword          string
 	ResetPasswordCustomURL string
@@ -294,6 +296,7 @@ func (options *TemplatedFileOptions) CommonData(base, baseURL, domain, nonce, la
 		LogoOverride:           logoOverride,
 		DuoSelfEnrollment:      options.DuoSelfEnrollment,
 		PasskeyLogin:           options.PasskeyLogin,
+		TelegramLogin:          options.TelegramLogin,
 		RememberMe:             options.RememberMe,
 		ResetPassword:          options.ResetPassword,
 		ResetPasswordCustomURL: options.ResetPasswordCustomURL,
@@ -315,6 +318,7 @@ func (options *TemplatedFileOptions) commonDataWithRememberMe(base, baseURL, dom
 		LogoOverride:           logoOverride,
 		DuoSelfEnrollment:      options.DuoSelfEnrollment,
 		PasskeyLogin:           options.PasskeyLogin,
+		TelegramLogin:          options.TelegramLogin,
 		RememberMe:             rememberMe,
 		ResetPassword:          options.ResetPassword,
 		ResetPasswordCustomURL: options.ResetPasswordCustomURL,
@@ -354,6 +358,7 @@ type TemplatedFileCommonData struct {
 	LogoOverride           string
 	DuoSelfEnrollment      string
 	PasskeyLogin           string
+	TelegramLogin          string
 	RememberMe             string
 	ResetPassword          string
 	ResetPasswordCustomURL string

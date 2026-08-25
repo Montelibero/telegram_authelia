@@ -64,6 +64,7 @@ const defaultProps = {
     rememberMe: false,
     resetPassword: false,
     resetPasswordCustomURL: "",
+    telegramLogin: false,
 };
 
 it("renders login form with username, password, and sign in button", () => {
@@ -96,4 +97,19 @@ it("renders reset password link when enabled", () => {
 it("does not render reset password link when disabled", () => {
     render(<FirstFactorForm {...defaultProps} resetPassword={false} />);
     expect(screen.queryByText("Reset password?")).not.toBeInTheDocument();
+});
+
+it("renders Telegram login when enabled and preserves the portal return URL", () => {
+    window.history.replaceState({}, "", "/?rd=https%3A%2F%2Fapp.example.com");
+    render(<FirstFactorForm {...defaultProps} telegramLogin={true} />);
+
+    expect(screen.getByRole("link", { name: "Sign in with Telegram" })).toHaveAttribute(
+        "href",
+        "/api/telegram/login?rd=%2F%3Frd%3Dhttps%253A%252F%252Fapp.example.com",
+    );
+});
+
+it("does not render Telegram login when disabled", () => {
+    render(<FirstFactorForm {...defaultProps} telegramLogin={false} />);
+    expect(screen.queryByRole("link", { name: "Sign in with Telegram" })).not.toBeInTheDocument();
 });
