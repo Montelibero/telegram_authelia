@@ -83,6 +83,7 @@
 	"Failed to register device, the provided code is expired or has already been used": "Failed to register device, the provided code is expired or has already been used",
 	"Failed to register device, the provided link is expired or has already been used": "Failed to register device, the provided link is expired or has already been used",
 	"Failed to register your credential, the identity verification process might have timed out": "Failed to register your credential, the identity verification process might have timed out",
+	"Filter users": "Filter users",
 	"Generate setup link": "Generate setup link",
 	"Group changed elsewhere; the latest version has been loaded": "Group changed elsewhere; the latest version has been loaded",
 	"Group changes require a recent administrator password check.": "Group changes require a recent administrator password check.",
