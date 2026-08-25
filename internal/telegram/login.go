@@ -90,6 +90,12 @@ func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginR
 	return LoginResult{Details: details, Identity: identity, ReturnURL: flow.ReturnURL}, nil
 }
 
+// Purpose returns the validated purpose of a pending flow without consuming it.
+func (s *LoginService) Purpose(state string) (string, error) {
+	flow, err := s.states.Inspect(state)
+	return flow.Purpose, err
+}
+
 func safeReturnURL(value string) bool {
 	if value == "" {
 		return true

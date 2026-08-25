@@ -33,6 +33,34 @@ func RequirePasswordFactor(next RequestHandler) RequestHandler {
 	}
 }
 
+// RequireFreshPasswordElevation requires a recent password reauthentication and a valid user elevation.
+// Unlike RequireElevated, second-factor sessions never bypass these checks.
+func RequireFreshPasswordElevation(next RequestHandler) RequestHandler {
+	return func(ctx *AutheliaCtx) {
+		userSession, err := ctx.GetSession()
+		if err != nil || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+			ctx.ReplyForbidden()
+			return
+		}
+
+		now := ctx.GetClock().Now()
+		lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
+		firstFactor := userSession.GetFirstFactorAuthn()
+		if lifespan <= 0 || firstFactor.IsZero() || firstFactor.After(now) || now.Sub(firstFactor) > lifespan || userSession.Elevations.User == nil {
+			if err = ctx.ReplyJSON(OKResponse{Status: "KO", Data: ElevatedForbiddenResponse{Elevation: true}}, fasthttp.StatusForbidden); err != nil {
+				ctx.Logger.WithError(err).Error("Error occurred encoding JSON response during a password elevation check.")
+			}
+			return
+		}
+
+		if !handleRequireElevatedShouldDoNextValidate(ctx, &userSession) {
+			return
+		}
+
+		next(ctx)
+	}
+}
+
 // RequireElevated requires various elevation criteria.
 func RequireElevated(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {

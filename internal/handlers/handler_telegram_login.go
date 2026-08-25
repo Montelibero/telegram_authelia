@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -17,24 +21,52 @@ func TelegramLoginGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
-	authorizationURL, _, err := ctx.Providers.Telegram.Begin(string(ctx.QueryArgs().Peek("rd")))
+	authorizationURL, state, err := ctx.Providers.Telegram.Begin(string(ctx.QueryArgs().Peek("rd")))
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Failed to start Telegram login")
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
 		return
 	}
+	setTelegramStateCookie(ctx, state)
 
 	ctx.Redirect(authorizationURL, fasthttp.StatusFound)
 }
 
 // TelegramCallbackGET completes Telegram OIDC and creates a normal one-factor session.
 func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
-	if ctx.Providers.Telegram == nil {
+	if ctx.Providers.Telegram == nil && ctx.Providers.TelegramLink == nil {
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 		return
 	}
 
-	result, err := ctx.Providers.Telegram.Complete(ctx, string(ctx.QueryArgs().Peek("state")), string(ctx.QueryArgs().Peek("code")))
+	state := string(ctx.QueryArgs().Peek("state"))
+	if !validTelegramStateCookie(ctx, state) {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	clearTelegramStateCookie(ctx, state)
+
+	var purpose string
+	var err error
+	if ctx.Providers.Telegram != nil {
+		purpose, err = ctx.Providers.Telegram.Purpose(state)
+	} else {
+		purpose, err = ctx.Providers.TelegramLink.Purpose(state)
+	}
+	if err != nil {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	if purpose == "link" {
+		middlewares.RequireFreshPasswordElevation(TelegramLinkCallbackGET)(ctx)
+		return
+	}
+	if purpose != "login" || ctx.Providers.Telegram == nil {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+
+	result, err := ctx.Providers.Telegram.Complete(ctx, state, string(ctx.QueryArgs().Peek("code")))
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Telegram login failed")
 		switch {
@@ -83,4 +115,36 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		returnURL = "/"
 	}
 	ctx.Redirect(returnURL, fasthttp.StatusFound)
+}
+
+func telegramStateCookieName(state string) string {
+	digest := sha256.Sum256([]byte(state))
+	return "authelia_telegram_state_" + hex.EncodeToString(digest[:8])
+}
+
+func setTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(telegramStateCookieName(state))
+	cookie.SetValue(state)
+	cookie.SetPath("/api/telegram/callback")
+	cookie.SetHTTPOnly(true)
+	cookie.SetSecure(true)
+	cookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	cookie.SetMaxAge(int((5 * time.Minute).Seconds()))
+	ctx.Response.Header.SetCookie(cookie)
+}
+
+func validTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) bool {
+	value := ctx.Request.Header.Cookie(telegramStateCookieName(state))
+	return len(value) == len(state) && subtle.ConstantTimeCompare(value, []byte(state)) == 1
+}
+
+func clearTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(telegramStateCookieName(state))
+	cookie.SetPath("/api/telegram/callback")
+	cookie.SetExpire(time.Unix(1, 0))
+	ctx.Response.Header.SetCookie(cookie)
 }

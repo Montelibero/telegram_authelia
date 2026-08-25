@@ -62,6 +62,7 @@ type ServerEndpointRateLimits struct {
 	SecondFactorDuo                         ServerEndpointRateLimit `koanf:"second_factor_duo" yaml:"second_factor_duo,omitempty" toml:"second_factor_duo,omitempty" json:"second_factor_duo,omitempty" jsonschema:"title=Second Factor Duo" jsonschema_description:"Configures the rate limiter which applies to the Duo endpoint which initializes the application authorization flow for the second factor flow."`
 	SessionElevationStart                   ServerEndpointRateLimit `koanf:"session_elevation_start" yaml:"session_elevation_start,omitempty" toml:"session_elevation_start,omitempty" json:"session_elevation_start,omitempty" jsonschema:"title=Session Elevation Start" jsonschema_description:"Configures the rate limiter which applies to the Elevated Session endpoint which initializes the code generation and notification for the elevated session flow."`
 	SessionElevationFinish                  ServerEndpointRateLimit `koanf:"session_elevation_finish" yaml:"session_elevation_finish,omitempty" toml:"session_elevation_finish,omitempty" json:"session_elevation_finish,omitempty" jsonschema:"title=Session Elevation Finish" jsonschema_description:"Configures the rate limiter which applies to the Elevated Session endpoint which consumes the code for the elevated session flow."`
+	TelegramStart                           ServerEndpointRateLimit `koanf:"telegram_start" yaml:"telegram_start,omitempty" toml:"telegram_start,omitempty" json:"telegram_start,omitempty" jsonschema:"title=Telegram Start" jsonschema_description:"Configures the rate limiter which applies to endpoints that initialize Telegram authentication flows."`
 	OpenIDConnectToken                      ServerEndpointRateLimit `koanf:"openid_connect_token" yaml:"openid_connect_token,omitempty" toml:"openid_connect_token,omitempty" json:"openid_connect_token,omitempty" jsonschema:"title=OpenID Connect Token" jsonschema_description:"Configures the rate limiter which applies to the OpenID Connect 1.0 Token Endpoint."`
 	OpenIDConnectPushedAuthorizationRequest ServerEndpointRateLimit `koanf:"openid_connect_pushed_authorization_request" yaml:"openid_connect_pushed_authorization_request,omitempty" toml:"openid_connect_pushed_authorization_request,omitempty" json:"openid_connect_pushed_authorization_request,omitempty" jsonschema:"title=OpenID Connect Pushed Authorization Request" jsonschema_description:"Configures the rate limiter which applies to the OpenID Connect 1.0 Pushed Authorization Request Endpoint."`
 	OpenIDConnectUserInfo                   ServerEndpointRateLimit `koanf:"openid_connect_userinfo" yaml:"openid_connect_userinfo,omitempty" toml:"openid_connect_userinfo,omitempty" json:"openid_connect_userinfo,omitempty" jsonschema:"title=OpenID Connect UserInfo" jsonschema_description:"Configures the rate limiter which applies to the OpenID Connect 1.0 UserInfo Endpoint."`
@@ -180,6 +181,12 @@ var DefaultServerConfiguration = Server{
 					{Period: 1, Requests: 3},  // 3 requests per 1.0x of identity_validation.elevated_session.elevation_lifespan.
 					{Period: 2, Requests: 5},  // 5 requests per 2.0x of identity_validation.elevated_session.elevation_lifespan.
 					{Period: 6, Requests: 15}, // 15 requests per 6.0x of identity_validation.elevated_session.elevation_lifespan.
+				},
+			},
+			TelegramStart: ServerEndpointRateLimit{
+				Buckets: []ServerEndpointRateLimitBucket{
+					{Period: 1 * time.Minute, Requests: 30},
+					{Period: 10 * time.Minute, Requests: 100},
 				},
 			},
 			OpenIDConnectToken: ServerEndpointRateLimit{

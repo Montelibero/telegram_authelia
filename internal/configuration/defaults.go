@@ -14,6 +14,7 @@ var defaults = map[string]any{
 	"server.endpoints.rate_limits.second_factor_duo.enable":                           true,
 	"server.endpoints.rate_limits.session_elevation_start.enable":                     true,
 	"server.endpoints.rate_limits.session_elevation_finish.enable":                    true,
+	"server.endpoints.rate_limits.telegram_start.enable":                              true,
 	"webauthn.selection_criteria.discoverability":                                     "preferred",
 	"webauthn.selection_criteria.user_verification":                                   "preferred",
 	"webauthn.metadata.cache_policy":                                                  "strict",

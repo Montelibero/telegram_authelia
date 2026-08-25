@@ -13,7 +13,7 @@ import (
 )
 
 func TestLinkServiceBindsCallbackToLocalUser(t *testing.T) {
-	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x51}, 256)))
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x51}, 256)), []byte("test secret"))
 	client := &fakeLoginClient{identity: Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	store := &fakeLinkStore{}
 	service := NewLinkService(client, states, store)
@@ -32,7 +32,7 @@ func TestLinkServiceBindsCallbackToLocalUser(t *testing.T) {
 
 func TestLinkServiceUnlinksExactCurrentUser(t *testing.T) {
 	store := &fakeLinkStore{}
-	service := NewLinkService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil), store)
+	service := NewLinkService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil, []byte("test secret")), store)
 
 	require.NoError(t, service.Unlink(context.Background(), "bublik"))
 	assert.Equal(t, "bublik", store.unlinkedUsername)

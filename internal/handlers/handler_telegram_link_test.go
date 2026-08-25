@@ -19,29 +19,40 @@ import (
 func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
 	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com", AuthenticationMethodRefs: authorization.AuthenticationMethodsReferences{UsernameAndPassword: true}})
 	defer mock.Close()
+	mock.Ctx.Providers.Clock = &mock.Clock
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedFor, "127.0.0.1")
 	var sessionCookie fasthttp.Cookie
 	require.NoError(t, sessionCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie("authelia_session")))
 	mock.Ctx.Request.Header.SetCookie(string(sessionCookie.Key()), string(sessionCookie.Value()))
 	mock.Ctx.Response.Reset()
 	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	store := &handlerIdentityLinkStore{}
-	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(client, telegram.NewStateStore(time.Minute, nil, nil), store)
+	states := telegram.NewStateStore(time.Minute, mock.Clock.Now, nil, []byte("test secret"))
+	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, states, &handlerTelegramStore{})
+	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(client, states, store)
 	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/link")
 	require.NotEmpty(t, mock.Ctx.Request.Header.Cookie("authelia_session"))
 	initialSession, err := mock.Ctx.GetSession()
 	require.NoError(t, err)
 	require.Equal(t, "bublik", initialSession.Username)
+	initialSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+	initialSession.Elevations.User = &session.Elevation{ID: 1, Expires: mock.Clock.Now().Add(time.Minute), RemoteIP: mock.Ctx.RemoteIP()}
+	require.NoError(t, mock.Ctx.SaveSession(initialSession))
 
 	TelegramLinkGET(mock.Ctx)
 	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
 	require.Equal(t, "bublik", client.flow.Username)
+	var stateCookie fasthttp.Cookie
+	require.NoError(t, stateCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie(telegramStateCookieName(client.flow.State))))
+	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
 
 	mock.Ctx.Response.Reset()
-	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/link/callback?state=" + client.flow.State + "&code=code")
+	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/callback?state=" + client.flow.State + "&code=code")
 	callbackSession, err := mock.Ctx.GetSession()
 	require.NoError(t, err)
 	require.Equal(t, "bublik", callbackSession.Username)
-	TelegramLinkCallbackGET(mock.Ctx)
+	TelegramCallbackGET(mock.Ctx)
 	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode(), mock.LogEntryN(0))
 	assert.Equal(t, "bublik", store.linkedUsername)
 
@@ -56,7 +67,7 @@ func TestTelegramLinkStatusReturnsCurrentUsersIdentity(t *testing.T) {
 	defer mock.Close()
 	providerUsername := "bublik_tg"
 	store := &handlerIdentityLinkStore{identity: model.MTLUserIdentity{ProviderUserID: "987654321", ProviderUsername: &providerUsername}, found: true}
-	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(&handlerTelegramClient{}, telegram.NewStateStore(time.Minute, nil, nil), store)
+	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(&handlerTelegramClient{}, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret")), store)
 
 	TelegramLinkStatusGET(mock.Ctx)
 

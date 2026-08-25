@@ -1282,6 +1282,38 @@ func (s *AuthzSuite) TestShouldForwardSQLUserAttributes() {
 	s.Equal("Bublik", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteName)))
 }
 
+func (s *AuthzSuite) TestShouldForwardTelegramSessionAttributes() {
+	if s.implementation != AuthzImplForwardAuth {
+		s.T().Skip()
+	}
+
+	mock := mocks.NewMockAutheliaCtx(s.T())
+	defer mock.Close()
+	setUpMockClock(mock)
+	authz := s.Builder().WithConfig(&mock.Ctx.Configuration).Build()
+	targetURI := s.RequireParseRequestURI("https://bypass.example.com")
+	s.setRequest(mock.Ctx, fasthttp.MethodGet, targetURI, true, false)
+
+	userSession, err := mock.Ctx.GetSession()
+	s.Require().NoError(err)
+	userSession.SetOneFactorExternal(mock.Clock.Now(), &authentication.UserDetails{
+		Username:    "bublik",
+		DisplayName: "Bublik",
+		Emails:      []string{"bublik@eurmtl.me"},
+		Groups:      []string{"admins", "app:grafana"},
+	})
+	userSession.RefreshTTL = mock.Clock.Now().Add(5 * time.Minute)
+	s.Require().NoError(mock.Ctx.SaveSession(userSession))
+
+	authz.Handler(mock.Ctx)
+
+	s.Equal(fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	s.Equal("bublik", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteUser)))
+	s.Equal("bublik@eurmtl.me", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteEmail)))
+	s.Equal("admins,app:grafana", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteGroups)))
+	s.Equal("Bublik", string(mock.Ctx.Response.Header.PeekBytes(headerRemoteName)))
+}
+
 func (s *AuthzSuite) TestShouldApplyPolicyOfOneFactorDomain() {
 	if s.setRequest == nil {
 		s.T().Skip()

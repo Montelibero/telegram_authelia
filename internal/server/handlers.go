@@ -217,7 +217,7 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 
 	middlewareElevatedPassword := middlewares.NewBridgeBuilder(*config, providers).
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
-		WithPostMiddlewares(middlewares.RequirePasswordFactor, middlewares.RequireElevated).
+		WithPostMiddlewares(middlewares.RequireFreshPasswordElevation).
 		Build()
 
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
@@ -263,11 +263,11 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 	r.POST("/api/firstfactor", middlewareAPI(handlers.FirstFactorPasswordPOST(delayerPassword)))
 	r.POST("/api/firstfactor/reauthenticate", middleware1FA(handlers.FirstFactorReauthenticatePOST(delayerPassword)))
 	if config.Telegram.Enabled {
-		r.GET("/api/telegram/login", middlewareAPI(handlers.TelegramLoginGET))
+		rateLimitTelegramStart := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.TelegramStart), middlewares.WithRateLimitContext(ctx))
+		r.GET("/api/telegram/login", middlewareAPI(rateLimitTelegramStart(handlers.TelegramLoginGET)))
 		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
-		r.GET("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramLinkGET))
+		r.GET("/api/telegram/link", middlewareElevatedPassword(rateLimitTelegramStart(handlers.TelegramLinkGET)))
 		r.GET("/api/telegram/link/status", middleware1FA(handlers.TelegramLinkStatusGET))
-		r.GET("/api/telegram/link/callback", middlewareElevatedPassword(handlers.TelegramLinkCallbackGET))
 		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
 	}
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))

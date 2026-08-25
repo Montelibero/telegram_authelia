@@ -1,9 +1,12 @@
 package telegram
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"sync"
@@ -19,7 +22,7 @@ var (
 
 // Flow binds an OIDC request to its state, nonce, PKCE verifier, and return URL.
 type Flow struct {
-	State        string
+	State        string `json:"-"`
 	Nonce        string
 	CodeVerifier string
 	ReturnURL    string
@@ -28,17 +31,18 @@ type Flow struct {
 	ExpiresAt    time.Time
 }
 
-// StateStore stores short-lived, single-use OIDC flows in memory.
+// StateStore seals short-lived OIDC flows and tracks local replay attempts.
 type StateStore struct {
-	mu     sync.Mutex
-	flows  map[string]Flow
-	ttl    time.Duration
-	now    func() time.Time
-	random io.Reader
+	mu       sync.Mutex
+	consumed map[[sha256.Size]byte]time.Time
+	ttl      time.Duration
+	now      func() time.Time
+	random   io.Reader
+	aead     cipher.AEAD
 }
 
 // NewStateStore constructs a state store. Nil clock and random sources use production defaults.
-func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader) *StateStore {
+func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, secret []byte) *StateStore {
 	if now == nil {
 		now = time.Now
 	}
@@ -47,7 +51,17 @@ func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader) *S
 		random = rand.Reader
 	}
 
-	return &StateStore{flows: map[string]Flow{}, ttl: ttl, now: now, random: random}
+	key := sha256.Sum256(secret)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		panic(err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err)
+	}
+
+	return &StateStore{consumed: map[[sha256.Size]byte]time.Time{}, ttl: ttl, now: now, random: random, aead: aead}
 }
 
 // Create creates and stores a new Telegram OIDC flow.
@@ -61,11 +75,6 @@ func (s *StateStore) CreateLink(username string) (Flow, error) {
 }
 
 func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
-	state, err := s.randomValue()
-	if err != nil {
-		return Flow{}, err
-	}
-
 	nonce, err := s.randomValue()
 	if err != nil {
 		return Flow{}, err
@@ -77,7 +86,6 @@ func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
 	}
 
 	flow := Flow{
-		State:        state,
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
@@ -86,28 +94,72 @@ func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
 		ExpiresAt:    s.now().Add(s.ttl),
 	}
 
-	s.mu.Lock()
-	s.flows[state] = flow
-	s.mu.Unlock()
+	payload, err := json.Marshal(flow)
+	if err != nil {
+		return Flow{}, err
+	}
+	nonceBytes := make([]byte, s.aead.NonceSize())
+	if _, err = io.ReadFull(s.random, nonceBytes); err != nil {
+		return Flow{}, err
+	}
+	flow.State = base64.RawURLEncoding.EncodeToString(append(nonceBytes, s.aead.Seal(nil, nonceBytes, payload, nil)...))
 
 	return flow, nil
 }
 
-// Consume atomically removes and returns a flow.
-func (s *StateStore) Consume(state string) (Flow, error) {
-	s.mu.Lock()
-	flow, ok := s.flows[state]
-	delete(s.flows, state)
-	s.mu.Unlock()
-
-	if !ok {
+// Inspect decrypts and validates a flow without consuming it.
+func (s *StateStore) Inspect(state string) (Flow, error) {
+	token, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil || len(token) <= s.aead.NonceSize() {
+		return Flow{}, ErrInvalidState
+	}
+	payload, err := s.aead.Open(nil, token[:s.aead.NonceSize()], token[s.aead.NonceSize():], nil)
+	if err != nil {
+		return Flow{}, ErrInvalidState
+	}
+	flow := Flow{State: state}
+	if err = json.Unmarshal(payload, &flow); err != nil {
 		return Flow{}, ErrInvalidState
 	}
 
 	if s.now().After(flow.ExpiresAt) {
-		return Flow{}, ErrExpiredState
+		return flow, ErrExpiredState
 	}
 
+	return flow, nil
+}
+
+// Consume atomically marks and returns a valid flow as single use in this process.
+func (s *StateStore) Consume(state string) (Flow, error) {
+	fingerprint := sha256.Sum256([]byte(state))
+	s.mu.Lock()
+	_, alreadyConsumed := s.consumed[fingerprint]
+	s.mu.Unlock()
+	if alreadyConsumed {
+		return Flow{}, ErrInvalidState
+	}
+
+	flow, err := s.Inspect(state)
+	if err != nil {
+		if errors.Is(err, ErrExpiredState) {
+			s.mu.Lock()
+			s.consumed[fingerprint] = s.now().Add(s.ttl)
+			s.mu.Unlock()
+		}
+		return Flow{}, err
+	}
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for item, expires := range s.consumed {
+		if now.After(expires) {
+			delete(s.consumed, item)
+		}
+	}
+	if _, ok := s.consumed[fingerprint]; ok {
+		return Flow{}, ErrInvalidState
+	}
+	s.consumed[fingerprint] = flow.ExpiresAt
 	return flow, nil
 }
 

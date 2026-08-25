@@ -288,6 +288,46 @@ func TestRequirePasswordFactor(t *testing.T) {
 	})
 }
 
+func TestRequireFreshPasswordElevation(t *testing.T) {
+	t.Run("rejects two factor session when elevation skip is configured", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.SkipSecondFactor = true
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+		mock.Ctx.Providers.Clock = &mock.Clock
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		userSession.AuthenticationMethodRefs.WebAuthn = true
+		userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequireFreshPasswordElevation(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("accepts a recent password authentication with valid elevation", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+		mock.Ctx.Providers.Clock = &mock.Clock
+		mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedFor, "127.0.0.1")
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+		userSession.Elevations.User = &session.Elevation{ID: 1, Expires: mock.Clock.Now().Add(time.Minute), RemoteIP: net.ParseIP("127.0.0.1")}
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequireFreshPasswordElevation(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	})
+}
+
 func NilHandler(ctx *middlewares.AutheliaCtx) {
 	ctx.SetContentTypeTextPlain()
 	ctx.Response.SetBodyString("Example Nil")

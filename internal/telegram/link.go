@@ -74,6 +74,12 @@ func (s *LinkService) Complete(ctx context.Context, currentUsername, state, code
 	return s.store.LinkMTLUserIdentity(ctx, currentUsername, "telegram", identity.ProviderUserID, identity.Username)
 }
 
+// Purpose returns the validated purpose of a pending flow without consuming it.
+func (s *LinkService) Purpose(state string) (string, error) {
+	flow, err := s.states.Inspect(state)
+	return flow.Purpose, err
+}
+
 // Unlink removes the Telegram identity from the exact current user.
 func (s *LinkService) Unlink(ctx context.Context, currentUsername string) error {
 	return s.store.UnlinkMTLUserIdentity(ctx, currentUsername, "telegram")

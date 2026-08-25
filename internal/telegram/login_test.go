@@ -14,7 +14,7 @@ import (
 )
 
 func TestLoginServiceBeginAndComplete(t *testing.T) {
-	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 128)))
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 256)), []byte("test secret"))
 	client := &fakeLoginClient{identity: Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	users := &fakeIdentityUserStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me", Groups: []string{"app:grafana"}}, found: true}
 	service := NewLoginService(client, states, users)
@@ -34,7 +34,7 @@ func TestLoginServiceBeginAndComplete(t *testing.T) {
 }
 
 func TestLoginServiceRejectsUnsafeReturnURL(t *testing.T) {
-	service := NewLoginService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil), &fakeIdentityUserStore{})
+	service := NewLoginService(&fakeLoginClient{}, NewStateStore(time.Minute, nil, nil, []byte("test secret")), &fakeIdentityUserStore{})
 
 	_, _, err := service.Begin("https://attacker.example/")
 	assert.ErrorIs(t, err, ErrUnsafeReturnURL)
@@ -54,7 +54,7 @@ func TestLoginServiceRejectsUnknownAndDisabledUsers(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x42}, 128)))
+			states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x42}, 256)), []byte("test secret"))
 			service := NewLoginService(&fakeLoginClient{identity: Identity{ProviderUserID: "1"}}, states, tc.store)
 			_, state, err := service.Begin("")
 			require.NoError(t, err)
