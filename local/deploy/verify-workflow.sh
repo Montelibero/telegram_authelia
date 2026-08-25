@@ -28,6 +28,8 @@ require_literal "platforms: linux/amd64"
 require_literal "ghcr.io/montelibero/authelia:latest"
 require_literal "push: true"
 require_literal "file: ./local/deploy/Dockerfile"
+require_literal "if: github.ref == 'refs/heads/deploy'"
+require_literal 'BUILD_COMMIT=${{ github.sha }}'
 
 if [[ ! -f "${DOCKERFILE}" ]]; then
   echo "Missing deployment Dockerfile: ${DOCKERFILE}" >&2
@@ -38,6 +40,18 @@ if [[ ! -f "${DOCKERIGNORE}" ]]; then
   echo "Missing deployment Docker ignore file: ${DOCKERIGNORE}" >&2
   exit 1
 fi
+
+require_dockerfile_literal() {
+  local value="$1"
+  if ! grep -Fq -- "${value}" "${DOCKERFILE}"; then
+    echo "Deployment Dockerfile is missing required value: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_dockerfile_literal "dcdca62c8b64a0a54e4decd4e1a6c3c712fdcc60"
+require_dockerfile_literal "27741bad0e2843f615bde86629e86b48d2f7eee6cc07785defa6c025ead25656"
+require_dockerfile_literal "org.opencontainers.image.revision"
 
 if grep -Eq 'uses: [^#[:space:]]+@(v[0-9]+|main|master)([[:space:]]|$)' "${WORKFLOW}"; then
   echo "Workflow contains a mutable action reference" >&2

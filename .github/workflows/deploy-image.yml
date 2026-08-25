@@ -16,6 +16,7 @@ concurrency:
 jobs:
   image:
     name: Build linux/amd64 image
+    if: github.ref == 'refs/heads/deploy'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout deploy source
@@ -39,5 +40,10 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/montelibero/authelia:latest
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_BRANCH=deploy
+            BUILD_TAG=latest
+            BUILD_STATE=untagged clean
           cache-from: type=gha
           cache-to: type=gha,mode=max
