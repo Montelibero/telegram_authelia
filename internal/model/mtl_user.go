@@ -13,6 +13,7 @@ type MTLUser struct {
 	Status       string         `db:"status"`
 	PasswordHash sql.NullString `db:"password_hash"`
 	Version      int            `db:"version"`
+	SessionEpoch int            `db:"session_epoch"`
 	CreatedAt    time.Time      `db:"created_at"`
 	UpdatedAt    time.Time      `db:"updated_at"`
 }
@@ -43,7 +44,9 @@ type MTLUserIdentity struct {
 type MTLGroup struct {
 	ID        int64     `db:"id"`
 	Name      string    `db:"name"`
+	Version   int       `db:"version"`
 	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // MTLUserDetails contains the authentication-facing view of a local user.
