@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // MTLAdminUserSummary is the safe administrative list representation of a user.
 type MTLAdminUserSummary struct {
 	Username        string   `json:"username"`
@@ -39,6 +41,20 @@ type MTLAdminEmailCreate struct {
 	ExpectedVersion int    `json:"expected_version"`
 	Email           string `json:"email"`
 	Primary         bool   `json:"primary"`
+}
+
+// MTLAdminGroupSummary is the safe administrative list representation of a group.
+type MTLAdminGroupSummary struct {
+	Name      string    `db:"name" json:"name"`
+	Version   int       `db:"version" json:"version"`
+	UserCount int       `db:"user_count" json:"user_count"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
+// MTLAdminGroupDetails is the safe administrative detail representation of a group.
+type MTLAdminGroupDetails struct {
+	MTLAdminGroupSummary
+	Users []string `json:"users"`
 }
 
 // MTLAdminGroupCreate contains a new unrestricted group name.
