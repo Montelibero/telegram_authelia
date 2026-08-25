@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,8 @@ func TestSQLUserProviderStartupReconcilesEnabledApplicationGroups(t *testing.T) 
 
 func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
-		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4}, PrimaryEmail: "active@eurmtl.me"},
+		"active":   {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4, SessionEpoch: 2}, PrimaryEmail: "active@eurmtl.me"},
+		"telegram": {User: model.MTLUser{ID: 2, Username: "telegram", Status: model.MTLUserStatusActive, Version: 1, SessionEpoch: 4}, PrimaryEmail: "telegram@eurmtl.me"},
 	}}
 	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
@@ -88,6 +90,7 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 
 	updated := store.users["active"]
 	assert.Equal(t, 5, updated.User.Version)
+	assert.Equal(t, 3, updated.User.SessionEpoch)
 	digest, err := schema.DecodePasswordDigest(updated.User.PasswordHash.String)
 	require.NoError(t, err)
 	valid, err := digest.MatchAdvanced("new-password")
@@ -96,11 +99,36 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 
 	require.NoError(t, provider.UpdatePassword("active", "another-password"))
 	assert.Equal(t, 6, store.users["active"].User.Version)
+	removed, err := provider.RemovePassword("active", "another-password", 6)
+	require.NoError(t, err)
+	assert.Equal(t, 4, *removed.SessionEpoch)
+	assert.False(t, store.users["active"].User.PasswordHash.Valid)
+
+	proofDetails, err := provider.SetPasswordFromProof("telegram", "first-password", "grant", time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, 5, *proofDetails.SessionEpoch)
+	assert.Error(t, func() error {
+		_, err := provider.SetPasswordFromProof("telegram", "second-password", "grant", time.Now())
+		return err
+	}())
 }
 
 type testSQLUserStore struct {
 	users            map[string]model.MTLUserDetails
 	reconciledGroups []string
+	loadCount        int
+}
+
+func (s *testSQLUserStore) RemoveMTLSelfServicePassword(_ context.Context, username string, expectedVersion int, actor string) (model.MTLAdminUserDetails, error) {
+	details, ok := s.users[username]
+	if !ok || details.User.Version != expectedVersion || actor != username {
+		return model.MTLAdminUserDetails{}, assert.AnError
+	}
+	details.User.PasswordHash = sql.NullString{}
+	details.User.Version++
+	details.User.SessionEpoch++
+	s.users[username] = details
+	return model.MTLAdminUserDetails{MTLAdminUserSummary: model.MTLAdminUserSummary{Username: username, Version: details.User.Version}, SessionEpoch: details.User.SessionEpoch}, nil
 }
 
 func (s *testSQLUserStore) ReconcileMTLGroups(_ context.Context, groups []string) error {
@@ -113,8 +141,20 @@ func (s *testSQLUserStore) MigrateMTL(context.Context) error {
 }
 
 func (s *testSQLUserStore) LoadMTLUser(_ context.Context, username string) (model.MTLUserDetails, bool, error) {
+	s.loadCount++
 	details, found := s.users[username]
 	return details, found, nil
+}
+
+func TestSQLUserProviderChangePasswordUsesVerifiedVersion(t *testing.T) {
+	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
+		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4}},
+	}}
+	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
+	require.NoError(t, provider.StartupCheck())
+
+	require.NoError(t, provider.ChangePassword("active", "old-password", "new-password"))
+	assert.Equal(t, 1, store.loadCount, "password verification and update must use the same loaded version")
 }
 
 func (s *testSQLUserStore) FindMTLUserByEmail(_ context.Context, email string) (string, bool, error) {
@@ -142,4 +182,23 @@ func (s *testSQLUserStore) UpdateMTLUserPassword(_ context.Context, userID int64
 	}
 
 	return assert.AnError
+}
+
+func (s *testSQLUserStore) SetMTLSelfServicePassword(_ context.Context, username, passwordHash string, expectedVersion int, actor string) (model.MTLAdminUserDetails, error) {
+	details, ok := s.users[username]
+	if !ok || details.User.Version != expectedVersion || actor != username {
+		return model.MTLAdminUserDetails{}, assert.AnError
+	}
+	details.User.PasswordHash = sql.NullString{String: passwordHash, Valid: true}
+	details.User.Version++
+	details.User.SessionEpoch++
+	s.users[username] = details
+	return model.MTLAdminUserDetails{
+		MTLAdminUserSummary: model.MTLAdminUserSummary{Username: username, Version: details.User.Version, PasswordEnabled: true},
+		SessionEpoch:        details.User.SessionEpoch,
+	}, nil
+}
+
+func (s *testSQLUserStore) SetMTLSelfServicePasswordWithTelegramGrant(ctx context.Context, username, passwordHash string, expectedVersion int, actor, _ string, _ time.Time) (model.MTLAdminUserDetails, error) {
+	return s.SetMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor)
 }

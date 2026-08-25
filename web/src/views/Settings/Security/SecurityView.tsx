@@ -8,12 +8,18 @@ import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
 import { useUserInfoGET } from "@hooks/UserInfo";
 import { Configuration } from "@models/Configuration";
+import { SelfServiceProfile, getSelfServiceProfile, getTelegramPasswordProofURL } from "@services/SelfService";
 import { getTelegramLinkURL } from "@services/Telegram";
 import { UserSessionElevation, getUserSessionElevation } from "@services/UserSessionElevation";
 import { getTelegramLogin } from "@utils/Configuration";
 import IdentityVerificationDialog from "@views/Settings/Common/IdentityVerificationDialog";
 import SecondFactorDialog from "@views/Settings/Common/SecondFactorDialog";
 import ChangePasswordDialog from "@views/Settings/Security/ChangePasswordDialog";
+import {
+    DisablePasswordDialog,
+    EditProfileDialog,
+    SetPasswordDialog,
+} from "@views/Settings/Security/SelfServiceDialogs";
 
 interface PasswordChangeButtonProps {
     configuration: Configuration | undefined;
@@ -56,6 +62,26 @@ const SettingsView = function () {
     const [dialogPWChangeOpening, setDialogPWChangeOpening] = useState(false);
     const [dialogTelegramLinkOpening, setDialogTelegramLinkOpening] = useState(false);
     const [configuration, fetchConfiguration, , fetchConfigurationError] = useConfiguration();
+    const [profile, setProfile] = useState<SelfServiceProfile>();
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [setPasswordOpen, setSetPasswordOpen] = useState(
+        () => new URLSearchParams(window.location.search).get("telegram_password_setup") === "verified",
+    );
+    const [disablePasswordOpen, setDisablePasswordOpen] = useState(false);
+
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("telegram_password_setup")) {
+            url.searchParams.delete("telegram_password_setup");
+            window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+        }
+    }, []);
+
+    const refreshProfile = useCallback(() => {
+        getSelfServiceProfile()
+            .then(setProfile)
+            .catch(() => createErrorNotification(translate("There was an issue retrieving your profile")));
+    }, [createErrorNotification, translate]);
 
     const handleResetStateOpening = () => {
         setDialogSFOpening(false);
@@ -198,7 +224,8 @@ const SettingsView = function () {
     useEffect(() => {
         fetchUserInfo();
         fetchConfiguration();
-    }, [fetchUserInfo, fetchConfiguration]);
+        refreshProfile();
+    }, [fetchUserInfo, fetchConfiguration, refreshProfile]);
 
     return (
         <Fragment>
@@ -221,6 +248,24 @@ const SettingsView = function () {
                 setClosed={() => {
                     handleResetState();
                 }}
+            />
+            <EditProfileDialog
+                key={`${profile?.version || 0}-${profileOpen}`}
+                open={profileOpen}
+                profile={profile}
+                onClose={() => setProfileOpen(false)}
+                onSaved={(updated) => (updated ? setProfile(updated) : refreshProfile())}
+            />
+            <SetPasswordDialog
+                open={setPasswordOpen}
+                onClose={() => setSetPasswordOpen(false)}
+                onSaved={refreshProfile}
+            />
+            <DisablePasswordDialog
+                open={disablePasswordOpen}
+                profile={profile}
+                onClose={() => setDisablePasswordOpen(false)}
+                onSaved={refreshProfile}
             />
 
             <Container
@@ -253,7 +298,7 @@ const SettingsView = function () {
                                 }}
                             >
                                 <Typography>
-                                    {translate("Name")}: {userInfo?.display_name || ""}
+                                    {translate("Name")}: {profile?.display_name || userInfo?.display_name || ""}
                                 </Typography>
                             </Box>
                             <Box
@@ -283,13 +328,41 @@ const SettingsView = function () {
                             <Box
                                 sx={{ border: `1px solid ${theme.palette.grey[600]}`, borderRadius: 1, mb: 1, p: 1.25 }}
                             >
-                                <Typography>{translate("Password")}: ●●●●●●●●</Typography>
+                                <Typography>
+                                    {translate("Password")}:{" "}
+                                    {profile?.password_enabled ? "●●●●●●●●" : translate("Not configured")}
+                                </Typography>
                             </Box>
-                            <PasswordChangeButton
-                                configuration={configuration}
-                                translate={translate}
-                                handleChangePassword={handleChangePassword}
-                            />
+                            <Stack spacing={1}>
+                                <Button variant="outlined" onClick={() => setProfileOpen(true)}>
+                                    {translate("Edit Profile")}
+                                </Button>
+                                {profile?.password_enabled ? (
+                                    <>
+                                        <PasswordChangeButton
+                                            configuration={configuration}
+                                            translate={translate}
+                                            handleChangePassword={handleChangePassword}
+                                        />
+                                        {profile.telegram_linked && (
+                                            <Button
+                                                color="error"
+                                                variant="outlined"
+                                                onClick={() => setDisablePasswordOpen(true)}
+                                            >
+                                                {translate("Disable Password Login")}
+                                            </Button>
+                                        )}
+                                    </>
+                                ) : profile?.telegram_linked ? (
+                                    <Button
+                                        variant="contained"
+                                        onClick={() => window.location.assign(getTelegramPasswordProofURL())}
+                                    >
+                                        {translate("Set Password")}
+                                    </Button>
+                                ) : null}
+                            </Stack>
                             <TelegramAccountLink enabled={getTelegramLogin()} onConnect={handleConnectTelegram} />
                         </Box>
                     </Stack>

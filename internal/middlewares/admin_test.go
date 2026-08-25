@@ -150,3 +150,29 @@ func TestRequireAdminMutationSameOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestRequireSameOriginMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, origin string
+		expected     int
+	}{
+		{name: "missing origin", expected: fasthttp.StatusForbidden},
+		{name: "cross origin", origin: "https://evil.example.com", expected: fasthttp.StatusForbidden},
+		{name: "same origin", origin: "https://auth.example.com", expected: fasthttp.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+			mock.Ctx.Request.Header.SetHost("auth.example.com")
+			mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedHost, "auth.example.com")
+			mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedProto, "https")
+			if tc.origin != "" {
+				mock.Ctx.Request.Header.Set("Origin", tc.origin)
+			}
+
+			middlewares.RequireSameOriginMutation(NilHandler)(mock.Ctx)
+
+			assert.Equal(t, tc.expected, mock.Ctx.Response.StatusCode())
+		})
+	}
+}

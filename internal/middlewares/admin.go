@@ -33,6 +33,11 @@ func RequireAdminMutation(next RequestHandler) RequestHandler {
 	return RequireAdmin(requireAdminSameOrigin(requireAdminFreshPassword(next)))
 }
 
+// RequireSameOriginMutation rejects state-changing requests not originating from this Authelia endpoint.
+func RequireSameOriginMutation(next RequestHandler) RequestHandler {
+	return requireAdminSameOrigin(next)
+}
+
 func requireAdminFreshPassword(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {
 		userSession, err := ctx.GetSession()

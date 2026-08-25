@@ -1,0 +1,176 @@
+package handlers
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"path"
+	"time"
+
+	"github.com/valyala/fasthttp"
+
+	"github.com/authelia/authelia/v4/internal/authentication"
+	"github.com/authelia/authelia/v4/internal/middlewares"
+)
+
+const telegramPasswordGrantCookie = "authelia_telegram_password_grant"
+
+type selfServicePasswordSetRequest struct {
+	NewPassword string `json:"new_password" validate:"required"`
+}
+
+type selfServicePasswordRemoveRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	ExpectedVersion int    `json:"expected_version"`
+}
+
+func TelegramPasswordProofGET(ctx *middlewares.AutheliaCtx) {
+	userSession, err := ctx.GetSession()
+	if err != nil || userSession.Username == "" || ctx.Providers.TelegramPasswordProof == nil {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	binding, ok := selfServiceSessionBinding(ctx)
+	if !ok {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	authorizationURL, state, err := ctx.Providers.TelegramPasswordProof.Begin(ctx, userSession.Username, binding)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("Failed to start Telegram password proof")
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	setTelegramStateCookie(ctx, state)
+	ctx.Redirect(authorizationURL, fasthttp.StatusFound)
+}
+
+func TelegramPasswordProofCallbackGET(ctx *middlewares.AutheliaCtx) {
+	userSession, err := ctx.GetSession()
+	if err != nil || userSession.Username == "" || ctx.Providers.TelegramPasswordProof == nil {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	binding, ok := selfServiceSessionBinding(ctx)
+	if !ok {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	grant, err := ctx.Providers.TelegramPasswordProof.Complete(ctx, userSession.Username, binding, string(ctx.QueryArgs().Peek("state")), string(ctx.QueryArgs().Peek("code")))
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("Telegram password proof failed")
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	setTelegramPasswordGrantCookie(ctx, grant)
+	returnURL := ctx.TemplateRootURL()
+	returnURL.Path = path.Join(returnURL.Path, "settings/security")
+	query := returnURL.Query()
+	query.Set("telegram_password_setup", "verified")
+	returnURL.RawQuery = query.Encode()
+	ctx.Redirect(returnURL.String(), fasthttp.StatusFound)
+}
+
+func SelfServicePasswordSetPOST(ctx *middlewares.AutheliaCtx) {
+	userSession, err := ctx.GetSession()
+	if err != nil || userSession.Username == "" || ctx.Providers.TelegramPasswordProof == nil {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	grant := string(ctx.Request.Header.Cookie(telegramPasswordGrantCookie))
+	var body selfServicePasswordSetRequest
+	if err = ctx.ParseBody(&body); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	if err = ctx.Providers.PasswordPolicy.Check(body.NewPassword); err != nil {
+		ctx.SetJSONError(messagePasswordWeak)
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	binding, ok := selfServiceSessionBinding(ctx)
+	grantSignature, grantErr := ctx.Providers.TelegramPasswordProof.Validate(userSession.Username, binding, grant)
+	if !ok || grantErr != nil {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	provider, ok := ctx.Providers.UserProvider.(authentication.SelfServicePasswordProvider)
+	if !ok {
+		ctx.SetStatusCode(fasthttp.StatusNotImplemented)
+		return
+	}
+	details, err := provider.SetPasswordFromProof(userSession.Username, body.NewPassword, grantSignature, ctx.GetClock().Now())
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("Failed to set self-service password")
+		ctx.SetStatusCode(fasthttp.StatusConflict)
+		return
+	}
+	clearTelegramPasswordGrantCookie(ctx)
+	userSession.SessionEpoch = details.SessionEpoch
+	if err = ctx.SaveSession(userSession); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
+}
+
+func selfServiceSessionBinding(ctx *middlewares.AutheliaCtx) (string, bool) {
+	cookieName := ctx.GetSessionConfig().Name
+	value := ctx.Request.Header.Cookie(cookieName)
+	if cookieName == "" || len(value) == 0 {
+		return "", false
+	}
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:]), true
+}
+
+func SelfServicePasswordDELETE(ctx *middlewares.AutheliaCtx) {
+	userSession, err := ctx.GetSession()
+	provider, ok := ctx.Providers.UserProvider.(authentication.SelfServicePasswordProvider)
+	if err != nil || userSession.Username == "" || !ok {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	var body selfServicePasswordRemoveRequest
+	if err = ctx.ParseBody(&body); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	details, err := provider.RemovePassword(userSession.Username, body.CurrentPassword, body.ExpectedVersion)
+	if err != nil {
+		if errors.Is(err, authentication.ErrIncorrectPassword) {
+			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		} else {
+			ctx.SetStatusCode(fasthttp.StatusConflict)
+		}
+		return
+	}
+	userSession.SessionEpoch = details.SessionEpoch
+	if err = ctx.SaveSession(userSession); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
+}
+
+func setTelegramPasswordGrantCookie(ctx *middlewares.AutheliaCtx, grant string) {
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(telegramPasswordGrantCookie)
+	cookie.SetValue(grant)
+	cookie.SetPath("/")
+	cookie.SetHTTPOnly(true)
+	cookie.SetSecure(true)
+	cookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	cookie.SetMaxAge(int((5 * time.Minute).Seconds()))
+	ctx.Response.Header.SetCookie(cookie)
+}
+
+func clearTelegramPasswordGrantCookie(ctx *middlewares.AutheliaCtx) {
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(telegramPasswordGrantCookie)
+	cookie.SetPath("/")
+	cookie.SetExpire(time.Unix(1, 0))
+	ctx.Response.Header.SetCookie(cookie)
+}

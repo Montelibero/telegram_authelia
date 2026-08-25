@@ -43,6 +43,21 @@ type MTLAdminEmailCreate struct {
 	Primary         bool   `json:"primary"`
 }
 
+// MTLSelfServiceProfile is the safe current-user profile representation.
+type MTLSelfServiceProfile struct {
+	Username        string `json:"username"`
+	DisplayName     string `json:"display_name"`
+	Version         int    `json:"version"`
+	PasswordEnabled bool   `json:"password_enabled"`
+	TelegramLinked  bool   `json:"telegram_linked"`
+}
+
+// MTLSelfServiceProfileUpdate contains the current user's editable profile fields.
+type MTLSelfServiceProfileUpdate struct {
+	ExpectedVersion int    `json:"expected_version"`
+	DisplayName     string `json:"display_name"`
+}
+
 // MTLAdminGroupSummary is the safe administrative list representation of a group.
 type MTLAdminGroupSummary struct {
 	Name      string    `db:"name" json:"name"`

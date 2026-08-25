@@ -58,10 +58,12 @@ func TestChangePasswordPOST_ShouldSucceedWithValidCredentials(t *testing.T) {
 		ChangePassword(userSession.Username, oldPassword, newPassword).
 		Return(nil)
 
+	updatedEpoch := 7
 	mock.UserProviderMock.EXPECT().
 		GetDetails(testUsername).
 		Return(&authentication.UserDetails{
-			Emails: []string{testEmail},
+			Emails:       []string{testEmail},
+			SessionEpoch: &updatedEpoch,
 		}, nil)
 
 	ChangePasswordPOST(mock.Ctx)
@@ -69,6 +71,9 @@ func TestChangePasswordPOST_ShouldSucceedWithValidCredentials(t *testing.T) {
 	mock.AssertLogEntryAdvanced(t, 1, logrus.DebugLevel, "User has changed their password", map[string]any{"username": testUsername})
 
 	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	updated, err := mock.Ctx.GetSession()
+	assert.NoError(t, err)
+	assert.Equal(t, &updatedEpoch, updated.SessionEpoch)
 }
 
 func TestChangePasswordPOST_ShouldFailWhenPasswordPolicyNotMet(t *testing.T) {

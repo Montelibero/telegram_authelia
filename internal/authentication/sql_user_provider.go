@@ -2,9 +2,9 @@ package authentication
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-crypt/crypt/algorithm"
 
@@ -118,12 +118,10 @@ func (p *SQLUserProvider) UpdatePassword(username, newPassword string) (err erro
 		return ErrPasswordWeak
 	}
 
-	digest, err := p.hash.Hash(newPassword)
+	encoded, err := p.hashPassword(newPassword)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
+		return err
 	}
-
-	encoded := digest.Encode()
 	if err = p.store.UpdateMTLUserPassword(context.Background(), stored.User.ID, &encoded, stored.User.Version); err != nil {
 		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
 	}
@@ -137,12 +135,19 @@ func (p *SQLUserProvider) ChangePassword(username, oldPassword, newPassword stri
 		return ErrPasswordWeak
 	}
 
-	valid, err := p.CheckUserPassword(username, oldPassword)
+	stored, err := p.loadActiveUser(username)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return ErrUserNotFound
-		}
-
+		return err
+	}
+	if !stored.User.PasswordHash.Valid {
+		return ErrUserNotFound
+	}
+	digest, err := schema.DecodePasswordDigest(stored.User.PasswordHash.String)
+	if err != nil {
+		return ErrAuthenticationFailed
+	}
+	valid, err := digest.MatchAdvanced(oldPassword)
+	if err != nil {
 		return ErrAuthenticationFailed
 	}
 
@@ -150,7 +155,72 @@ func (p *SQLUserProvider) ChangePassword(username, oldPassword, newPassword stri
 		return ErrIncorrectPassword
 	}
 
-	return p.UpdatePassword(username, newPassword)
+	encoded, err := p.hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if _, err = p.store.SetMTLSelfServicePassword(context.Background(), username, encoded, stored.User.Version, username); err != nil {
+		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+
+	return nil
+}
+
+func (p *SQLUserProvider) hashPassword(password string) (string, error) {
+	digest, err := p.hash.Hash(password)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	return digest.Encode(), nil
+}
+
+// SetPasswordFromProof sets the first password after an external identity proof.
+func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword, grantSignature string, consumedAt time.Time) (*UserDetails, error) {
+	stored, err := p.loadActiveUser(username)
+	if err != nil {
+		return nil, err
+	}
+	if stored.User.PasswordHash.Valid || strings.TrimSpace(newPassword) == "" {
+		return nil, ErrOperationFailed
+	}
+	encoded, err := p.hashPassword(newPassword)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := p.store.SetMTLSelfServicePasswordWithTelegramGrant(context.Background(), username, encoded, stored.User.Version, username, grantSignature, consumedAt)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	stored.User.Version = updated.Version
+	stored.User.SessionEpoch = updated.SessionEpoch
+	stored.User.PasswordHash.Valid = true
+	return sqlUserDetails(stored), nil
+}
+
+// RemovePassword verifies the current password and disables password login.
+func (p *SQLUserProvider) RemovePassword(username, currentPassword string, expectedVersion int) (*UserDetails, error) {
+	valid, err := p.CheckUserPassword(username, currentPassword)
+	if err != nil {
+		return nil, err
+	}
+	if !valid {
+		return nil, ErrIncorrectPassword
+	}
+	stored, err := p.loadActiveUser(username)
+	if err != nil {
+		return nil, err
+	}
+	if stored.User.Version != expectedVersion {
+		return nil, fmt.Errorf("%w: version conflict", ErrOperationFailed)
+	}
+	updated, err := p.store.RemoveMTLSelfServicePassword(context.Background(), username, expectedVersion, username)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	stored.User.Version = updated.Version
+	stored.User.SessionEpoch = updated.SessionEpoch
+	stored.User.PasswordHash.Valid = false
+	return sqlUserDetails(stored), nil
 }
 
 // Close is a no-op because the storage provider owns the database connection.

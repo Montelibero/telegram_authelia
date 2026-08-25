@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 
@@ -13,11 +14,14 @@ import (
 )
 
 var (
-	ErrMTLVersionConflict      = errors.New("MTL user version conflict")
-	ErrMTLConflict             = errors.New("MTL user data conflict")
-	ErrMTLPrimaryEmailRequired = errors.New("MTL user requires exactly one primary email")
-	ErrMTLUserNotFound         = errors.New("MTL user not found")
-	ErrMTLIdentityNotFound     = errors.New("MTL user identity not found")
+	ErrMTLVersionConflict          = errors.New("MTL user version conflict")
+	ErrMTLConflict                 = errors.New("MTL user data conflict")
+	ErrMTLPrimaryEmailRequired     = errors.New("MTL user requires exactly one primary email")
+	ErrMTLUserNotFound             = errors.New("MTL user not found")
+	ErrMTLIdentityNotFound         = errors.New("MTL user identity not found")
+	ErrMTLTelegramIdentityRequired = errors.New("MTL Telegram identity required")
+	ErrMTLLastPasswordAdmin        = errors.New("MTL last password administrator")
+	ErrMTLTelegramGrantInvalid     = errors.New("MTL Telegram password grant invalid")
 )
 
 // LinkMTLUserIdentity links a stable provider identity to an existing local user.
@@ -196,6 +200,126 @@ WHERE id = ? AND version = ?`)
 	}
 
 	return nil
+}
+
+// SetMTLSelfServicePassword stores a password, rotates other sessions, and audits the mutation.
+func (p *SQLProvider) SetMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error) {
+	return p.setMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor, "", time.Time{})
+}
+
+// SetMTLSelfServicePasswordWithTelegramGrant atomically consumes a Telegram grant and stores a password.
+func (p *SQLProvider) SetMTLSelfServicePasswordWithTelegramGrant(ctx context.Context, username, passwordHash string, expectedVersion int, actor, grantSignature string, consumedAt time.Time) (details model.MTLAdminUserDetails, err error) {
+	if grantSignature == "" {
+		return details, ErrMTLTelegramGrantInvalid
+	}
+	return p.setMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor, grantSignature, consumedAt)
+}
+
+func (p *SQLProvider) setMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor, grantSignature string, consumedAt time.Time) (details model.MTLAdminUserDetails, err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return details, fmt.Errorf("failed to begin MTL self-service password set: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+
+	userID, err := loadMTLAdminUserVersion(ctx, tx, username, expectedVersion)
+	if err != nil {
+		return details, err
+	}
+	if grantSignature != "" {
+		query := tx.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE signature = ? AND username = ? AND intent = ? AND expires >= ? AND consumed IS NULL AND revoked IS NULL`, tableOneTimeCode))
+		grantResult, grantErr := tx.ExecContext(ctx, query, grantSignature, "telegram", "telegram_state", consumedAt)
+		if grantErr != nil {
+			return details, fmt.Errorf("failed to consume Telegram password grant: %w", grantErr)
+		}
+		if grantErr = requireMTLAdminRow(grantResult); grantErr != nil {
+			return details, ErrMTLTelegramGrantInvalid
+		}
+	}
+	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
+	if err != nil {
+		return details, err
+	}
+	result, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET password_hash = ?, version = version + 1, session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND version = ?`), passwordHash, userID, expectedVersion)
+	if err != nil {
+		return details, fmt.Errorf("failed to set MTL self-service password: %w", err)
+	}
+	if err = requireMTLAdminRow(result); err != nil {
+		return details, err
+	}
+	if err = auditMTLAdmin(ctx, tx, actorID, "password.set", "user", username); err != nil {
+		return details, err
+	}
+	if err = tx.Commit(); err != nil {
+		return details, fmt.Errorf("failed to commit MTL self-service password set: %w", err)
+	}
+
+	details, _, err = p.LoadMTLAdminUser(ctx, username)
+	return details, err
+}
+
+// RemoveMTLSelfServicePassword disables password login when Telegram remains available.
+func (p *SQLProvider) RemoveMTLSelfServicePassword(ctx context.Context, username string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return details, fmt.Errorf("failed to begin MTL self-service password removal: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+
+	userID, err := loadMTLAdminUserVersion(ctx, tx, username, expectedVersion)
+	if err != nil {
+		return details, err
+	}
+	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
+	if err != nil {
+		return details, err
+	}
+
+	query := tx.Rebind(`
+UPDATE mtl_users
+SET password_hash = NULL, version = version + 1, session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND version = ?
+  AND EXISTS (SELECT 1 FROM mtl_user_identities WHERE user_id = ? AND provider = 'telegram')
+  AND (
+    NOT EXISTS (
+      SELECT 1 FROM mtl_group_memberships gm
+      INNER JOIN mtl_groups g ON g.id = gm.group_id
+      WHERE gm.user_id = ? AND g.name = 'admins'
+    )
+    OR EXISTS (
+      SELECT 1 FROM mtl_users other
+      INNER JOIN mtl_group_memberships gm ON gm.user_id = other.id
+      INNER JOIN mtl_groups g ON g.id = gm.group_id
+      WHERE other.id <> ? AND other.status = 'active' AND other.password_hash IS NOT NULL AND g.name = 'admins'
+    )
+  )`)
+	result, err := tx.ExecContext(ctx, query, userID, expectedVersion, userID, userID, userID)
+	if err != nil {
+		return details, fmt.Errorf("failed to remove MTL self-service password: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return details, fmt.Errorf("failed to check MTL self-service password removal: %w", err)
+	}
+	if rows != 1 {
+		var telegramCount int
+		if err = tx.GetContext(ctx, &telegramCount, tx.Rebind(`SELECT COUNT(*) FROM mtl_user_identities WHERE user_id = ? AND provider = 'telegram'`), userID); err != nil {
+			return details, fmt.Errorf("failed to check MTL Telegram identity: %w", err)
+		}
+		if telegramCount == 0 {
+			return details, ErrMTLTelegramIdentityRequired
+		}
+		return details, ErrMTLLastPasswordAdmin
+	}
+	if err = auditMTLAdmin(ctx, tx, actorID, "password.removed", "user", username); err != nil {
+		return details, err
+	}
+	if err = tx.Commit(); err != nil {
+		return details, fmt.Errorf("failed to commit MTL self-service password removal: %w", err)
+	}
+
+	details, _, err = p.LoadMTLAdminUser(ctx, username)
+	return details, err
 }
 
 // ImportMTLUsers creates complete user records in one transaction.
