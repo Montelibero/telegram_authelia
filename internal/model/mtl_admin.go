@@ -14,8 +14,9 @@ type MTLAdminUserSummary struct {
 // MTLAdminUserDetails is the safe administrative detail representation of a user.
 type MTLAdminUserDetails struct {
 	MTLAdminUserSummary
-	Emails     []MTLUserEmail    `json:"emails"`
-	Identities []MTLUserIdentity `json:"identities"`
+	SessionEpoch int               `json:"session_epoch"`
+	Emails       []MTLUserEmail    `json:"emails"`
+	Identities   []MTLUserIdentity `json:"identities"`
 }
 
 // MTLAdminUserCreate contains the fields used to create an administrative user record.

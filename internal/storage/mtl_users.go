@@ -123,7 +123,7 @@ func (p *SQLProvider) UnlinkMTLUserIdentity(ctx context.Context, username, provi
 // LoadMTLUser loads the authentication-facing details for a local user.
 func (p *SQLProvider) LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error) {
 	query := p.db.Rebind(`
-SELECT id, username, display_name, status, password_hash, version, created_at, updated_at
+SELECT id, username, display_name, status, password_hash, version, session_epoch, created_at, updated_at
 FROM mtl_users
 WHERE username = ?`)
 
