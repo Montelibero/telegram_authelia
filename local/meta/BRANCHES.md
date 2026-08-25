@@ -18,6 +18,7 @@ This file records the branches used to assemble `deploy`. Update it whenever an 
 |---:|---|---|---|---|---|
 | 10 | `local/meta` | local | `release-base` | Fork workflow, branch registry, runbooks, and agent instructions | Active |
 | 20 | `local/auth-overlay` | local | `release-base` | SQL users, Telegram authentication, migration, administration, and self-service features | M5 ready |
+| 30 | `local/ci-deploy` | local | `release-base` | Deployment image workflow, local rehearsal, and verification scripts | M6 in progress |
 
 Temporary `security/CVE-*` overlays are inserted after `local/meta` and before product overlays. Each entry must identify the upstream commit and stable release that permits removal.
 
@@ -46,6 +47,7 @@ The approved M3 design and executable plan are documented in `local/meta/admin-u
 release-base
 local/meta
 local/auth-overlay
+local/ci-deploy
 ```
 
 The executable order in `rebuild-deploy.sh` must match this list.

@@ -7,6 +7,7 @@ readonly DEPLOY_BRANCH="deploy"
 readonly OVERLAYS=(
   "local/meta"
   "local/auth-overlay"
+  "local/ci-deploy"
 )
 
 if [[ -n "$(git status --porcelain)" ]]; then
