@@ -3,14 +3,17 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
+	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/mocks"
 	"github.com/authelia/authelia/v4/internal/model"
 	"github.com/authelia/authelia/v4/internal/storage"
@@ -112,6 +115,46 @@ func TestAdminUserSelfIdentityUnlinkRequiresConfirmationOnlyForFinalLoginMethod(
 	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
 }
 
+func TestAdminUserSetupLinkUsesResetPasswordCompletionWithoutEmail(t *testing.T) {
+	mock, _ := newAdminAPITestContext(t)
+	mock.Ctx.Configuration.IdentityValidation.ResetPassword.JWTSecret = "test-secret"
+	mock.Ctx.Configuration.IdentityValidation.ResetPassword.JWTAlgorithm = "HS256"
+	mock.Ctx.Configuration.IdentityValidation.ResetPassword.JWTExpiration = 5 * time.Minute
+	mock.Ctx.Configuration.Session.Cookies = []schema.SessionCookie{{Domain: "example.com"}}
+	mock.Ctx.Request.Header.SetHost("login.example.com")
+	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedHost, "login.example.com")
+	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedProto, "https")
+	mock.Ctx.SetUserValue(middlewares.UserValueKeyBaseURL, "/auth")
+	mock.Ctx.Request.SetBodyString(`{"username":"admin"}`)
+	_, err := mock.Ctx.IssuerURL()
+	require.NoError(t, err)
+
+	AdminUserSetupLinkPOST(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.Equal(t, "no-store", string(mock.Ctx.Response.Header.Peek("Cache-Control")))
+	var response struct {
+		Data struct {
+			SetupURL string `json:"setup_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(mock.Ctx.Response.Body(), &response))
+	setupURL, err := url.Parse(response.Data.SetupURL)
+	require.NoError(t, err)
+	assert.Equal(t, "/auth/reset-password/step2", setupURL.Path)
+	token := setupURL.Query().Get("token")
+	require.NotEmpty(t, token)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"token":"` + token + `"}`)
+	ResetPasswordIdentityFinish(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	require.NotNil(t, userSession.PasswordResetUsername)
+	assert.Equal(t, "admin", *userSession.PasswordResetUsername)
+	assert.Empty(t, mock.Ctx.Providers.StorageProvider.(adminAPITestStore).identityVerifications)
+}
+
 func newAdminAPITestContext(t *testing.T) (*mocks.MockAutheliaCtx, *storage.SQLiteProvider) {
 	t.Helper()
 	mock := mocks.NewMockAutheliaCtx(t)
@@ -122,7 +165,7 @@ func newAdminAPITestContext(t *testing.T) (*mocks.MockAutheliaCtx, *storage.SQLi
 	require.NoError(t, store.MigrateMTL(context.Background()))
 	_, err := store.CreateMTLAdminUser(context.Background(), model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com", Groups: nil}, "")
 	require.NoError(t, err)
-	mock.Ctx.Providers.StorageProvider = adminAPITestStore{SQLiteProvider: store}
+	mock.Ctx.Providers.StorageProvider = adminAPITestStore{SQLiteProvider: store, identityVerifications: map[string]bool{}}
 	userSession, err := mock.Ctx.GetSession()
 	require.NoError(t, err)
 	userSession.Username = "admin"
@@ -134,6 +177,7 @@ func newAdminAPITestContext(t *testing.T) (*mocks.MockAutheliaCtx, *storage.SQLi
 
 type adminAPITestStore struct {
 	*storage.SQLiteProvider
+	identityVerifications map[string]bool
 }
 
 func (s adminAPITestStore) ListMTLAdminUsers(context.Context) ([]model.MTLAdminUserSummary, error) {
@@ -210,6 +254,20 @@ func (s adminAPITestStore) ApproveMTLRegistration(_ context.Context, approval mo
 
 func (s adminAPITestStore) RejectMTLRegistration(_ context.Context, id int64, version int, actor string) (model.MTLRegistrationRequest, error) {
 	return s.SQLiteProvider.RejectMTLRegistration(context.Background(), id, version, actor)
+}
+
+func (s adminAPITestStore) SaveIdentityVerification(_ context.Context, verification model.IdentityVerification) error {
+	s.identityVerifications[verification.JTI.String()] = true
+	return nil
+}
+
+func (s adminAPITestStore) FindIdentityVerification(_ context.Context, jti string) (bool, error) {
+	return s.identityVerifications[jti], nil
+}
+
+func (s adminAPITestStore) ConsumeIdentityVerification(_ context.Context, jti string, ip model.NullIP) error {
+	delete(s.identityVerifications, jti)
+	return nil
 }
 
 func jsonInt(value int) string {

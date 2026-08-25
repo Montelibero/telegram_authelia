@@ -389,6 +389,8 @@ func TestHandlerMainAdminRouteWithBasePathAndMethodRestriction(t *testing.T) {
 		{method: fasthttp.MethodGet, uri: "/auth/api/admin/users", expected: fasthttp.StatusUnauthorized},
 		{method: fasthttp.MethodPost, uri: "/auth/api/admin/users", expected: fasthttp.StatusUnauthorized},
 		{method: fasthttp.MethodGet, uri: "/auth/api/admin/users/email", expected: fasthttp.StatusMethodNotAllowed},
+		{method: fasthttp.MethodPost, uri: "/auth/api/admin/users/setup-link", expected: fasthttp.StatusUnauthorized},
+		{method: fasthttp.MethodGet, uri: "/auth/api/admin/users/setup-link", expected: fasthttp.StatusMethodNotAllowed},
 		{method: fasthttp.MethodGet, uri: "/auth/api/admin/registrations", expected: fasthttp.StatusUnauthorized},
 		{method: fasthttp.MethodGet, uri: "/auth/api/admin/registration?id=1", expected: fasthttp.StatusUnauthorized},
 		{method: fasthttp.MethodPost, uri: "/auth/api/admin/registration/approve", expected: fasthttp.StatusUnauthorized},

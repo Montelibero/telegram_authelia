@@ -3,7 +3,11 @@ package handlers
 import (
 	"context"
 	"errors"
+	"net/url"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 
 	"github.com/authelia/authelia/v4/internal/middlewares"
@@ -42,6 +46,15 @@ type adminUserIdentityRequest struct {
 	Provider        string `json:"provider"`
 	ExpectedVersion int    `json:"expected_version"`
 	ConfirmUsername string `json:"confirm_username"`
+}
+
+type adminUserSetupLinkRequest struct {
+	Username string `json:"username"`
+}
+
+type adminUserSetupLinkResponse struct {
+	SetupURL  string    `json:"setup_url"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func AdminUsersGET(ctx *middlewares.AutheliaCtx) {
@@ -178,4 +191,65 @@ func AdminUserIdentityDELETE(ctx *middlewares.AutheliaCtx) {
 	}
 	details, err := store.UnlinkMTLAdminUserIdentity(ctx, request.Username, request.Provider, request.ExpectedVersion, actor)
 	adminAPIRespond(ctx, details, fasthttp.StatusOK, err)
+}
+
+// AdminUserSetupLinkPOST creates a one-time link compatible with the reset-password completion flow.
+func AdminUserSetupLinkPOST(ctx *middlewares.AutheliaCtx) {
+	var request adminUserSetupLinkRequest
+	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
+	if !ok {
+		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	_, found, err := store.LoadMTLAdminUser(ctx, request.Username)
+	if err != nil {
+		adminAPIError(ctx, err)
+		return
+	}
+	if !found {
+		adminAPIError(ctx, storage.ErrMTLUserNotFound)
+		return
+	}
+	issuer, err := ctx.IssuerURL()
+	if err != nil {
+		adminAPIError(ctx, err)
+		return
+	}
+	jti, err := uuid.NewRandom()
+	if err != nil {
+		adminAPIError(ctx, err)
+		return
+	}
+	now := ctx.GetClock().Now()
+	expiresAt := now.Add(ctx.Configuration.IdentityValidation.ResetPassword.JWTExpiration)
+	verification := model.IdentityVerification{
+		JTI: jti, IssuedAt: now, ExpiresAt: expiresAt, Action: ActionResetPassword,
+		Username: request.Username, IssuedIP: model.NewIP(ctx.RemoteIP()),
+	}
+	claims := verification.ToIdentityVerificationClaim(issuer)
+	method := jwt.SigningMethodHS256
+	switch ctx.Configuration.IdentityValidation.ResetPassword.JWTAlgorithm {
+	case "HS384":
+		method = jwt.SigningMethodHS384
+	case "HS512":
+		method = jwt.SigningMethodHS512
+	}
+	token, err := jwt.NewWithClaims(method, claims).SignedString([]byte(ctx.Configuration.IdentityValidation.ResetPassword.JWTSecret))
+	if err != nil {
+		adminAPIError(ctx, err)
+		return
+	}
+	if err = ctx.Providers.StorageProvider.SaveIdentityVerification(ctx, verification); err != nil {
+		adminAPIError(ctx, err)
+		return
+	}
+	setupURL := (&url.URL{Scheme: issuer.Scheme, Host: issuer.Host, Path: issuer.Path}).JoinPath("/reset-password/step2")
+	query := setupURL.Query()
+	query.Set("token", token)
+	setupURL.RawQuery = query.Encode()
+	ctx.Response.Header.Set("Cache-Control", "no-store")
+	adminAPIRespond(ctx, adminUserSetupLinkResponse{SetupURL: setupURL.String(), ExpiresAt: expiresAt}, fasthttp.StatusOK, nil)
 }
