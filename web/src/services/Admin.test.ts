@@ -1,12 +1,23 @@
 import axios from "axios";
 
 import {
+    addAdminGroupUser,
     addAdminUserEmail,
+    approveAdminRegistration,
+    createAdminGroup,
     createAdminUser,
+    deleteAdminGroup,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminGroup,
+    getAdminGroups,
+    getAdminRegistration,
+    getAdminRegistrations,
     getAdminUser,
     getAdminUsers,
+    rejectAdminRegistration,
+    removeAdminGroupUser,
+    renameAdminGroup,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
@@ -95,5 +106,86 @@ it("generates a one-time setup link", async () => {
         data: { username: "alice" },
         method: "POST",
         url: "/api/admin/users/setup-link",
+    });
+});
+
+it("loads and resolves registrations", async () => {
+    mockedAxios.mockResolvedValue({ data: { data: [], status: "OK" }, status: 200 });
+
+    await getAdminRegistrations("pending");
+    await getAdminRegistration(42);
+    await approveAdminRegistration({
+        display_name: "Alice",
+        email: "alice@example.com",
+        expected_version: 3,
+        groups: ["users"],
+        id: 42,
+        username: "alice",
+    });
+    await rejectAdminRegistration(42, 3);
+
+    expect(mockedAxios).toHaveBeenNthCalledWith(1, {
+        method: "GET",
+        url: "/api/admin/registrations?status=pending",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(2, { method: "GET", url: "/api/admin/registration?id=42" });
+    expect(mockedAxios).toHaveBeenNthCalledWith(3, {
+        data: {
+            display_name: "Alice",
+            email: "alice@example.com",
+            expected_version: 3,
+            groups: ["users"],
+            id: 42,
+            username: "alice",
+        },
+        method: "POST",
+        url: "/api/admin/registration/approve",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(4, {
+        data: { expected_version: 3, id: 42 },
+        method: "POST",
+        url: "/api/admin/registration/reject",
+    });
+});
+
+it("manages groups and memberships", async () => {
+    mockedAxios.mockResolvedValue({ data: { data: [], status: "OK" }, status: 200 });
+
+    await getAdminGroups();
+    await getAdminGroup("team, odd");
+    await createAdminGroup("team, odd");
+    await renameAdminGroup("team, odd", "renamed", 2, "admin");
+    await deleteAdminGroup("renamed", 3, "admin");
+    await addAdminGroupUser("renamed", "alice", 3);
+    await removeAdminGroupUser("renamed", "alice", 4, "admin");
+
+    expect(mockedAxios).toHaveBeenNthCalledWith(2, {
+        method: "GET",
+        url: "/api/admin/group?name=team%2C+odd",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(3, {
+        data: { name: "team, odd" },
+        method: "POST",
+        url: "/api/admin/groups",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(4, {
+        data: { confirm_username: "admin", expected_version: 2, name: "team, odd", new_name: "renamed" },
+        method: "PATCH",
+        url: "/api/admin/group",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(5, {
+        data: { confirm_username: "admin", expected_version: 3, name: "renamed" },
+        method: "DELETE",
+        url: "/api/admin/group",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(6, {
+        data: { expected_version: 3, name: "renamed", username: "alice" },
+        method: "PUT",
+        url: "/api/admin/group/user",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(7, {
+        data: { confirm_username: "admin", expected_version: 4, name: "renamed", username: "alice" },
+        method: "DELETE",
+        url: "/api/admin/group/user",
     });
 });

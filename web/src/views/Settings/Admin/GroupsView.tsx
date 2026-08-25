@@ -1,7 +1,307 @@
-import { Typography } from "@mui/material";
+import { useCallback, useEffect, useState } from "react";
 
-const GroupsView = function () {
-    return <Typography variant="h4">Groups</Typography>;
+import {
+    Alert,
+    Box,
+    Button,
+    Card,
+    CardContent,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemText,
+    Stack,
+    TextField,
+    Typography,
+} from "@mui/material";
+import { useTranslation } from "react-i18next";
+
+import { useNotifications } from "@contexts/NotificationsContext";
+import {
+    AdminGroupDetails,
+    AdminGroupWarning,
+    addAdminGroupUser,
+    createAdminGroup,
+    deleteAdminGroup,
+    getAdminGroup,
+    getAdminGroups,
+    removeAdminGroupUser,
+    renameAdminGroup,
+} from "@services/Admin";
+import { postFirstFactorReauthenticate } from "@services/Password";
+
+interface GroupsViewProps {
+    currentUsername: string;
+}
+
+const GroupsView = function ({ currentUsername }: GroupsViewProps) {
+    const { t: translate } = useTranslation("settings");
+    const { createErrorNotification, createSuccessNotification } = useNotifications();
+    const [groups, setGroups] = useState<Awaited<ReturnType<typeof getAdminGroups>>>([]);
+    const [selected, setSelected] = useState<AdminGroupDetails>();
+    const [newGroupName, setNewGroupName] = useState("");
+    const [password, setPassword] = useState("");
+    const [warning, setWarning] = useState<{ affectedUsers: string[]; message: string }>();
+
+    const loadGroups = useCallback(async () => {
+        try {
+            setGroups(await getAdminGroups());
+        } catch {
+            createErrorNotification(translate("Failed to load groups"));
+        }
+    }, [createErrorNotification, translate]);
+
+    useEffect(() => {
+        loadGroups().catch(console.error);
+    }, [loadGroups]);
+
+    const openGroup = useCallback(
+        async (name: string) => {
+            try {
+                setSelected(await getAdminGroup(name));
+                setWarning(undefined);
+            } catch {
+                createErrorNotification(translate("Failed to load group"));
+            }
+        },
+        [createErrorNotification, translate],
+    );
+
+    const unlock = useCallback(async () => {
+        try {
+            await postFirstFactorReauthenticate(password);
+            setPassword("");
+            createSuccessNotification(translate("Administrator actions unlocked"));
+        } catch {
+            createErrorNotification(translate("Incorrect password or reauthentication failed"));
+        }
+    }, [createErrorNotification, createSuccessNotification, password, translate]);
+
+    const create = useCallback(async () => {
+        try {
+            setSelected(await createAdminGroup(newGroupName));
+            setNewGroupName("");
+            await loadGroups();
+            createSuccessNotification(translate("Group created"));
+        } catch {
+            createErrorNotification(translate("Group creation failed; reauthenticate and try again"));
+        }
+    }, [createErrorNotification, createSuccessNotification, loadGroups, newGroupName, translate]);
+
+    const applyGroup = useCallback(
+        async (operation: () => Promise<AdminGroupDetails | AdminGroupWarning>) => {
+            const selectedName = selected?.name;
+            try {
+                const result = await operation();
+                if ("external_acl_not_updated" in result) {
+                    setWarning(
+                        result.external_acl_not_updated
+                            ? {
+                                  affectedUsers: result.affected_users,
+                                  message: translate("External ACL configuration was not changed"),
+                              }
+                            : undefined,
+                    );
+                    setSelected(result.group?.name ? result.group : undefined);
+                } else {
+                    setWarning(undefined);
+                    setSelected(result);
+                }
+                await loadGroups();
+                createSuccessNotification(translate("Group updated"));
+            } catch (error) {
+                if ((error as { response?: { status?: number } }).response?.status === 409 && selectedName) {
+                    try {
+                        setSelected(await getAdminGroup(selectedName));
+                        await loadGroups();
+                        createErrorNotification(
+                            translate("Group changed elsewhere; the latest version has been loaded"),
+                        );
+                        return;
+                    } catch {
+                        /* Fall through when refreshing the conflicting group also fails. */
+                    }
+                }
+                createErrorNotification(translate("Group update failed; reauthenticate or reload and try again"));
+            }
+        },
+        [createErrorNotification, createSuccessNotification, loadGroups, selected?.name, translate],
+    );
+
+    return (
+        <Stack spacing={2}>
+            <Typography variant="h4">{translate("Groups")}</Typography>
+            <Alert severity="info">{translate("Group changes require a recent administrator password check.")}</Alert>
+            {warning ? (
+                <Alert severity="warning">
+                    {warning.message}. {translate("Affected users")}:{" "}
+                    {warning.affectedUsers.join(", ") || translate("none")}.
+                </Alert>
+            ) : null}
+            <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                <TextField
+                    label={translate("Administrator password")}
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    size="small"
+                />
+                <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
+                    {translate("Unlock changes")}
+                </Button>
+                <TextField
+                    label={translate("New group name")}
+                    value={newGroupName}
+                    onChange={(event) => setNewGroupName(event.target.value)}
+                    size="small"
+                />
+                <Button variant="contained" disabled={!newGroupName} onClick={() => create().catch(console.error)}>
+                    {translate("Create group")}
+                </Button>
+            </Stack>
+            <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { lg: "minmax(260px, 1fr) 2fr", xs: "1fr" } }}>
+                <Card variant="outlined">
+                    <CardContent>
+                        <List>
+                            {groups.map((group) => (
+                                <ListItem disablePadding key={group.name}>
+                                    <ListItemButton onClick={() => openGroup(group.name).catch(console.error)}>
+                                        <ListItemText primary={group.name} secondary={`${group.user_count} users`} />
+                                    </ListItemButton>
+                                </ListItem>
+                            ))}
+                        </List>
+                    </CardContent>
+                </Card>
+                {selected ? (
+                    <GroupDetails
+                        key={`${selected.name}:${selected.version}`}
+                        currentUsername={currentUsername}
+                        details={selected}
+                        applyGroup={applyGroup}
+                    />
+                ) : null}
+            </Box>
+        </Stack>
+    );
+};
+
+interface GroupDetailsProps {
+    applyGroup: (_operation: () => Promise<AdminGroupDetails | AdminGroupWarning>) => Promise<void>;
+    currentUsername: string;
+    details: AdminGroupDetails;
+}
+
+const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDetailsProps) {
+    const { t: translate } = useTranslation("settings");
+    const [name, setName] = useState(details.name);
+    const [confirmation, setConfirmation] = useState("");
+    const [usernameToAdd, setUsernameToAdd] = useState("");
+    const affectsCurrentAdministrator = details.users.includes(currentUsername);
+    const confirmed = confirmation === currentUsername;
+
+    return (
+        <Card variant="outlined">
+            <CardContent>
+                <Stack spacing={2}>
+                    <TextField
+                        label={translate("Group name")}
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                    />
+                    <TextField
+                        label={translate("Confirmation username")}
+                        value={confirmation}
+                        helperText={translate("Required for changes that can remove your own access")}
+                        onChange={(event) => setConfirmation(event.target.value)}
+                    />
+                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                        <Button
+                            variant="contained"
+                            disabled={affectsCurrentAdministrator && !confirmed}
+                            onClick={() =>
+                                applyGroup(() =>
+                                    renameAdminGroup(
+                                        details.name,
+                                        name,
+                                        details.version,
+                                        affectsCurrentAdministrator ? confirmation : "",
+                                    ),
+                                ).catch(console.error)
+                            }
+                        >
+                            {translate("Rename group")}
+                        </Button>
+                        <Button
+                            color="error"
+                            variant="outlined"
+                            disabled={affectsCurrentAdministrator && !confirmed}
+                            onClick={() =>
+                                applyGroup(() =>
+                                    deleteAdminGroup(
+                                        details.name,
+                                        details.version,
+                                        affectsCurrentAdministrator ? confirmation : "",
+                                    ),
+                                ).catch(console.error)
+                            }
+                        >
+                            {translate("Delete group")}
+                        </Button>
+                    </Stack>
+                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                        <TextField
+                            label={translate("Username to add")}
+                            value={usernameToAdd}
+                            onChange={(event) => setUsernameToAdd(event.target.value)}
+                            fullWidth
+                        />
+                        <Button
+                            disabled={!usernameToAdd}
+                            onClick={() =>
+                                applyGroup(() => addAdminGroupUser(details.name, usernameToAdd, details.version)).catch(
+                                    console.error,
+                                )
+                            }
+                        >
+                            {translate("Add member")}
+                        </Button>
+                    </Stack>
+                    <List>
+                        {details.users.map((username) => {
+                            const removesCurrentAdministrator = username === currentUsername;
+                            return (
+                                <ListItem
+                                    key={username}
+                                    secondaryAction={
+                                        <Button
+                                            aria-label={`Remove ${username}`}
+                                            color="error"
+                                            disabled={removesCurrentAdministrator && !confirmed}
+                                            onClick={() =>
+                                                applyGroup(() =>
+                                                    removeAdminGroupUser(
+                                                        details.name,
+                                                        username,
+                                                        details.version,
+                                                        removesCurrentAdministrator ? confirmation : "",
+                                                    ),
+                                                ).catch(console.error)
+                                            }
+                                        >
+                                            {translate("Remove")}
+                                        </Button>
+                                    }
+                                >
+                                    <ListItemText primary={username} />
+                                </ListItem>
+                            );
+                        })}
+                    </List>
+                </Stack>
+            </CardContent>
+        </Card>
+    );
 };
 
 export default GroupsView;

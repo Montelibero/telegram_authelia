@@ -49,6 +49,13 @@ export const AdminUserEmailPath = basePath + "/api/admin/users/email";
 export const AdminUserPrimaryEmailPath = basePath + "/api/admin/users/email/primary";
 export const AdminUserIdentityPath = basePath + "/api/admin/users/identity";
 export const AdminUserSetupLinkPath = basePath + "/api/admin/users/setup-link";
+export const AdminGroupsPath = basePath + "/api/admin/groups";
+export const AdminGroupPath = basePath + "/api/admin/group";
+export const AdminGroupUserPath = basePath + "/api/admin/group/user";
+export const AdminRegistrationsPath = basePath + "/api/admin/registrations";
+export const AdminRegistrationPath = basePath + "/api/admin/registration";
+export const AdminRegistrationApprovePath = basePath + "/api/admin/registration/approve";
+export const AdminRegistrationRejectPath = basePath + "/api/admin/registration/reject";
 
 export const ConfigurationPath = basePath + "/api/configuration";
 export const PasswordPolicyConfigurationPath = basePath + "/api/configuration/password-policy";

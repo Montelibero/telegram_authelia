@@ -56,7 +56,9 @@ const SettingsRouter = function () {
                     <Route path={AdminUsersSubRoute} element={<UsersView currentUsername={state.username} />} />
                 ) : null}
                 {state?.administrator ? <Route path={AdminPendingSubRoute} element={<PendingView />} /> : null}
-                {state?.administrator ? <Route path={AdminGroupsSubRoute} element={<GroupsView />} /> : null}
+                {state?.administrator ? (
+                    <Route path={AdminGroupsSubRoute} element={<GroupsView currentUsername={state.username} />} />
+                ) : null}
             </Routes>
         </SettingsLayout>
     );

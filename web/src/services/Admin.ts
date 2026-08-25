@@ -1,6 +1,13 @@
 import axios, { AxiosRequestConfig } from "axios";
 
 import {
+    AdminGroupPath,
+    AdminGroupUserPath,
+    AdminGroupsPath,
+    AdminRegistrationApprovePath,
+    AdminRegistrationPath,
+    AdminRegistrationRejectPath,
+    AdminRegistrationsPath,
     AdminUserEmailPath,
     AdminUserIdentityPath,
     AdminUserPath,
@@ -58,6 +65,47 @@ export interface AdminUserCreate {
 export interface AdminUserSetupLink {
     setup_url: string;
     expires_at: string;
+}
+
+export interface AdminRegistration {
+    id: number;
+    provider: string;
+    provider_user_id: string;
+    provider_username?: string;
+    display_name?: string;
+    proposed_username?: string;
+    proposed_email?: string;
+    status: "approved" | "pending" | "rejected";
+    version: number;
+    requested_at: string;
+    updated_at: string;
+    resolved_at?: string;
+}
+
+export interface AdminRegistrationApproval {
+    id: number;
+    expected_version: number;
+    username: string;
+    display_name: string;
+    email: string;
+    groups: string[];
+}
+
+export interface AdminGroupSummary {
+    name: string;
+    version: number;
+    user_count: number;
+    updated_at: string;
+}
+
+export interface AdminGroupDetails extends AdminGroupSummary {
+    users: string[];
+}
+
+export interface AdminGroupWarning {
+    group?: AdminGroupDetails;
+    affected_users: string[];
+    external_acl_not_updated: boolean;
 }
 
 async function adminRequest<T>(config: AxiosRequestConfig): Promise<T> {
@@ -151,5 +199,85 @@ export function generateAdminUserSetupLink(username: string) {
         data: { username },
         method: "POST",
         url: AdminUserSetupLinkPath,
+    });
+}
+
+export function getAdminRegistrations(status?: AdminRegistration["status"]) {
+    const query = status ? `?${new URLSearchParams({ status }).toString()}` : "";
+    return adminRequest<AdminRegistration[]>({ method: "GET", url: `${AdminRegistrationsPath}${query}` });
+}
+
+export function getAdminRegistration(id: number) {
+    return adminRequest<AdminRegistration>({
+        method: "GET",
+        url: `${AdminRegistrationPath}?${new URLSearchParams({ id: String(id) }).toString()}`,
+    });
+}
+
+export function approveAdminRegistration(approval: AdminRegistrationApproval) {
+    return adminRequest<{ username: string }>({
+        data: approval,
+        method: "POST",
+        url: AdminRegistrationApprovePath,
+    });
+}
+
+export function rejectAdminRegistration(id: number, expectedVersion: number) {
+    return adminRequest<AdminRegistration>({
+        data: { expected_version: expectedVersion, id },
+        method: "POST",
+        url: AdminRegistrationRejectPath,
+    });
+}
+
+export function getAdminGroups() {
+    return adminRequest<AdminGroupSummary[]>({ method: "GET", url: AdminGroupsPath });
+}
+
+export function getAdminGroup(name: string) {
+    return adminRequest<AdminGroupDetails>({
+        method: "GET",
+        url: `${AdminGroupPath}?${new URLSearchParams({ name }).toString()}`,
+    });
+}
+
+export function createAdminGroup(name: string) {
+    return adminRequest<AdminGroupDetails>({ data: { name }, method: "POST", url: AdminGroupsPath });
+}
+
+export function renameAdminGroup(name: string, newName: string, expectedVersion: number, confirmUsername = "") {
+    return adminRequest<AdminGroupWarning>({
+        data: {
+            confirm_username: confirmUsername,
+            expected_version: expectedVersion,
+            name,
+            new_name: newName,
+        },
+        method: "PATCH",
+        url: AdminGroupPath,
+    });
+}
+
+export function deleteAdminGroup(name: string, expectedVersion: number, confirmUsername = "") {
+    return adminRequest<AdminGroupWarning>({
+        data: { confirm_username: confirmUsername, expected_version: expectedVersion, name },
+        method: "DELETE",
+        url: AdminGroupPath,
+    });
+}
+
+export function addAdminGroupUser(name: string, username: string, expectedVersion: number) {
+    return adminRequest<AdminGroupDetails>({
+        data: { expected_version: expectedVersion, name, username },
+        method: "PUT",
+        url: AdminGroupUserPath,
+    });
+}
+
+export function removeAdminGroupUser(name: string, username: string, expectedVersion: number, confirmUsername = "") {
+    return adminRequest<AdminGroupDetails>({
+        data: { confirm_username: confirmUsername, expected_version: expectedVersion, name, username },
+        method: "DELETE",
+        url: AdminGroupUserPath,
     });
 }
