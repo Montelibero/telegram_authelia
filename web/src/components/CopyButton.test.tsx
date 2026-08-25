@@ -101,3 +101,23 @@ it("does not copy again while already copied", async () => {
     fireEvent.click(button);
     expect(mockWriteText).not.toHaveBeenCalled();
 });
+
+it("cancels scheduled state updates when unmounted", async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const { unmount } = render(
+        <CopyButton tooltip="copy" value="test">
+            Copy
+        </CopyButton>,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    await Promise.resolve();
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(2);
+
+    clearTimeoutSpy.mockRestore();
+    vi.useRealTimers();
+});

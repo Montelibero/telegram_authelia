@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 import { Check, ContentCopy } from "@mui/icons-material";
 import { Button, CircularProgress, SxProps, Tooltip } from "@mui/material";
@@ -21,8 +21,20 @@ const msTimeoutDefaultCopied = 2000;
 const CopyButton = function (props: Props) {
     const [isCopied, setIsCopied] = useState(false);
     const [isCopying, setIsCopying] = useState(false);
+    const mountedRef = useRef(true);
+    const copyingTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+    const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
     const msTimeoutCopying = props.msTimeoutCopying ?? msTimeoutDefaultCopying;
     const msTimeoutCopied = props.msTimeoutCopied ?? msTimeoutDefaultCopied;
+
+    useEffect(
+        () => () => {
+            mountedRef.current = false;
+            clearTimeout(copyingTimeoutRef.current);
+            clearTimeout(copiedTimeoutRef.current);
+        },
+        [],
+    );
 
     const handleCopyToClipboard = () => {
         if (isCopied || !props.value || props.value === "") {
@@ -34,12 +46,16 @@ const CopyButton = function (props: Props) {
 
             await navigator.clipboard.writeText(value);
 
-            setTimeout(() => {
+            if (!mountedRef.current) {
+                return;
+            }
+
+            copyingTimeoutRef.current = setTimeout(() => {
                 setIsCopying(false);
                 setIsCopied(true);
             }, msTimeoutCopying);
 
-            setTimeout(() => {
+            copiedTimeoutRef.current = setTimeout(() => {
                 setIsCopied(false);
             }, msTimeoutCopied);
         })(props.value);
