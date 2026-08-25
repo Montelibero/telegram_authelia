@@ -2,6 +2,7 @@ package configuration
 
 var defaults = map[string]any{
 	"regulation.max_retries": 3,
+	"telegram.enabled":       false,
 	"server.endpoints.rate_limits.openid_connect_introspection.enable":                true,
 	"server.endpoints.rate_limits.openid_connect_pushed_authorization_request.enable": true,
 	"server.endpoints.rate_limits.openid_connect_revocation.enable":                   true,
