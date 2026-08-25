@@ -3,8 +3,11 @@ package storage
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -201,6 +204,38 @@ func TestMTLSelfServicePasswordRemovalGuards(t *testing.T) {
 
 	_, err = provider.SetMTLSelfServicePassword(ctx, "plain", "new", plain.User.Version+1, "plain")
 	assert.ErrorIs(t, err, ErrMTLVersionConflict)
+}
+
+func TestMTLSelfServicePasswordGrantIsConsumedAtomically(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	require.NoError(t, provider.SchemaMigrate(ctx, true, SchemaLatest))
+	require.NoError(t, provider.ImportMTLUsers(ctx, []model.MTLUserImport{{
+		Username: "telegram", DisplayName: "Telegram", Emails: []model.MTLUserImportEmail{{Email: "telegram@eurmtl.me", Primary: true}},
+	}}))
+	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "telegram", "telegram", "42", "telegram"))
+	now := time.Now().Truncate(time.Second)
+	grant, err := provider.SaveOneTimeCode(ctx, model.OneTimeCode{
+		PublicID: uuid.New(), IssuedAt: now, IssuedIP: model.NewIP(net.IPv4zero), ExpiresAt: now.Add(time.Minute),
+		Username: "telegram", Intent: "telegram_state", Code: []byte("password-grant"),
+	})
+	require.NoError(t, err)
+	user, found, err := provider.LoadMTLUser(ctx, "telegram")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	set, err := provider.SetMTLSelfServicePasswordWithTelegramGrant(ctx, "telegram", "hash", user.User.Version, "telegram", grant, now)
+	require.NoError(t, err)
+	removed, err := provider.RemoveMTLSelfServicePassword(ctx, "telegram", set.Version, "telegram")
+	require.NoError(t, err)
+	_, err = provider.SetMTLSelfServicePasswordWithTelegramGrant(ctx, "telegram", "replayed", removed.Version, "telegram", grant, now)
+	assert.ErrorIs(t, err, ErrMTLTelegramGrantInvalid)
+
+	stored, found, err := provider.LoadMTLUser(ctx, "telegram")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.False(t, stored.User.PasswordHash.Valid)
+	assert.Equal(t, removed.Version, stored.User.Version)
 }
 
 func newTestMTLUserProvider(t *testing.T) *SQLiteProvider {

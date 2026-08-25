@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-crypt/crypt/algorithm"
 
@@ -174,7 +175,7 @@ func (p *SQLUserProvider) hashPassword(password string) (string, error) {
 }
 
 // SetPasswordFromProof sets the first password after an external identity proof.
-func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword string) (*UserDetails, error) {
+func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword, grantSignature string, consumedAt time.Time) (*UserDetails, error) {
 	stored, err := p.loadActiveUser(username)
 	if err != nil {
 		return nil, err
@@ -186,7 +187,7 @@ func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword string) (*U
 	if err != nil {
 		return nil, err
 	}
-	updated, err := p.store.SetMTLSelfServicePassword(context.Background(), username, encoded, stored.User.Version, username)
+	updated, err := p.store.SetMTLSelfServicePasswordWithTelegramGrant(context.Background(), username, encoded, stored.User.Version, username, grantSignature, consumedAt)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrOperationFailed, err)
 	}

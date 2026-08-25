@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 
@@ -20,6 +21,7 @@ var (
 	ErrMTLIdentityNotFound         = errors.New("MTL user identity not found")
 	ErrMTLTelegramIdentityRequired = errors.New("MTL Telegram identity required")
 	ErrMTLLastPasswordAdmin        = errors.New("MTL last password administrator")
+	ErrMTLTelegramGrantInvalid     = errors.New("MTL Telegram password grant invalid")
 )
 
 // LinkMTLUserIdentity links a stable provider identity to an existing local user.
@@ -202,6 +204,18 @@ WHERE id = ? AND version = ?`)
 
 // SetMTLSelfServicePassword stores a password, rotates other sessions, and audits the mutation.
 func (p *SQLProvider) SetMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error) {
+	return p.setMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor, "", time.Time{})
+}
+
+// SetMTLSelfServicePasswordWithTelegramGrant atomically consumes a Telegram grant and stores a password.
+func (p *SQLProvider) SetMTLSelfServicePasswordWithTelegramGrant(ctx context.Context, username, passwordHash string, expectedVersion int, actor, grantSignature string, consumedAt time.Time) (details model.MTLAdminUserDetails, err error) {
+	if grantSignature == "" {
+		return details, ErrMTLTelegramGrantInvalid
+	}
+	return p.setMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor, grantSignature, consumedAt)
+}
+
+func (p *SQLProvider) setMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor, grantSignature string, consumedAt time.Time) (details model.MTLAdminUserDetails, err error) {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return details, fmt.Errorf("failed to begin MTL self-service password set: %w", err)
@@ -211,6 +225,16 @@ func (p *SQLProvider) SetMTLSelfServicePassword(ctx context.Context, username, p
 	userID, err := loadMTLAdminUserVersion(ctx, tx, username, expectedVersion)
 	if err != nil {
 		return details, err
+	}
+	if grantSignature != "" {
+		query := tx.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE signature = ? AND username = ? AND intent = ? AND expires >= ? AND consumed IS NULL AND revoked IS NULL`, tableOneTimeCode))
+		grantResult, grantErr := tx.ExecContext(ctx, query, grantSignature, "telegram", "telegram_state", consumedAt)
+		if grantErr != nil {
+			return details, fmt.Errorf("failed to consume Telegram password grant: %w", grantErr)
+		}
+		if grantErr = requireMTLAdminRow(grantResult); grantErr != nil {
+			return details, ErrMTLTelegramGrantInvalid
+		}
 	}
 	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
 	if err != nil {

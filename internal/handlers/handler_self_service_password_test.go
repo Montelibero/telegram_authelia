@@ -67,7 +67,7 @@ type handlerSelfServicePasswordProvider struct {
 	details *authentication.UserDetails
 }
 
-func (p *handlerSelfServicePasswordProvider) SetPasswordFromProof(string, string) (*authentication.UserDetails, error) {
+func (p *handlerSelfServicePasswordProvider) SetPasswordFromProof(string, string, string, time.Time) (*authentication.UserDetails, error) {
 	return p.details, nil
 }
 

@@ -73,22 +73,22 @@ func (s *PasswordProofService) Complete(ctx context.Context, currentUsername, se
 	return grant.State, nil
 }
 
-func (s *PasswordProofService) Validate(currentUsername, sessionBinding, grant string) error {
+func (s *PasswordProofService) Validate(currentUsername, sessionBinding, grant string) (string, error) {
 	flow, err := s.states.Inspect(grant)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if flow.Purpose != "password_grant" || flow.Username == "" || flow.Username != currentUsername {
-		return ErrPasswordProofUserMismatch
+		return "", ErrPasswordProofUserMismatch
 	}
 	if flow.SessionBinding == "" || flow.SessionBinding != sessionBinding {
-		return ErrPasswordProofSessionMismatch
+		return "", ErrPasswordProofSessionMismatch
 	}
-	return nil
+	return flow.ReplayKey, nil
 }
 
 func (s *PasswordProofService) Consume(ctx context.Context, currentUsername, sessionBinding, grant string) error {
-	if err := s.Validate(currentUsername, sessionBinding, grant); err != nil {
+	if _, err := s.Validate(currentUsername, sessionBinding, grant); err != nil {
 		return err
 	}
 	if _, err := s.states.Consume(ctx, grant); err != nil {

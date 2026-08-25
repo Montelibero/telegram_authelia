@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,10 +104,13 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	assert.Equal(t, 4, *removed.SessionEpoch)
 	assert.False(t, store.users["active"].User.PasswordHash.Valid)
 
-	proofDetails, err := provider.SetPasswordFromProof("telegram", "first-password")
+	proofDetails, err := provider.SetPasswordFromProof("telegram", "first-password", "grant", time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, 5, *proofDetails.SessionEpoch)
-	assert.Error(t, func() error { _, err := provider.SetPasswordFromProof("telegram", "second-password"); return err }())
+	assert.Error(t, func() error {
+		_, err := provider.SetPasswordFromProof("telegram", "second-password", "grant", time.Now())
+		return err
+	}())
 }
 
 type testSQLUserStore struct {
@@ -193,4 +197,8 @@ func (s *testSQLUserStore) SetMTLSelfServicePassword(_ context.Context, username
 		MTLAdminUserSummary: model.MTLAdminUserSummary{Username: username, Version: details.User.Version, PasswordEnabled: true},
 		SessionEpoch:        details.User.SessionEpoch,
 	}, nil
+}
+
+func (s *testSQLUserStore) SetMTLSelfServicePasswordWithTelegramGrant(ctx context.Context, username, passwordHash string, expectedVersion int, actor, _ string, _ time.Time) (model.MTLAdminUserDetails, error) {
+	return s.SetMTLSelfServicePassword(ctx, username, passwordHash, expectedVersion, actor)
 }

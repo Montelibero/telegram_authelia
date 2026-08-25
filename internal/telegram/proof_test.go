@@ -27,7 +27,8 @@ func TestPasswordProofServiceRequiresExactLinkedIdentityAndSingleUseGrant(t *tes
 
 	grant, err := service.Complete(context.Background(), "bublik", "session-a", state, "code")
 	require.NoError(t, err)
-	assert.ErrorIs(t, service.Validate("bublik", "session-b", grant), ErrPasswordProofSessionMismatch)
+	_, err = service.Validate("bublik", "session-b", grant)
+	assert.ErrorIs(t, err, ErrPasswordProofSessionMismatch)
 	require.NoError(t, service.Consume(context.Background(), "bublik", "session-a", grant))
 	assert.ErrorIs(t, service.Consume(context.Background(), "bublik", "session-a", grant), ErrInvalidState)
 

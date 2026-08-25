@@ -89,7 +89,8 @@ func SelfServicePasswordSetPOST(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	binding, ok := selfServiceSessionBinding(ctx)
-	if !ok || ctx.Providers.TelegramPasswordProof.Validate(userSession.Username, binding, grant) != nil {
+	grantSignature, grantErr := ctx.Providers.TelegramPasswordProof.Validate(userSession.Username, binding, grant)
+	if !ok || grantErr != nil {
 		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
 		return
 	}
@@ -98,14 +99,10 @@ func SelfServicePasswordSetPOST(ctx *middlewares.AutheliaCtx) {
 		ctx.SetStatusCode(fasthttp.StatusNotImplemented)
 		return
 	}
-	details, err := provider.SetPasswordFromProof(userSession.Username, body.NewPassword)
+	details, err := provider.SetPasswordFromProof(userSession.Username, body.NewPassword, grantSignature, ctx.GetClock().Now())
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Failed to set self-service password")
 		ctx.SetStatusCode(fasthttp.StatusConflict)
-		return
-	}
-	if err = ctx.Providers.TelegramPasswordProof.Consume(ctx, userSession.Username, binding, grant); err != nil {
-		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
 		return
 	}
 	clearTelegramPasswordGrantCookie(ctx)

@@ -2,6 +2,7 @@ package authentication
 
 import (
 	"context"
+	"time"
 
 	"github.com/authelia/authelia/v4/internal/model"
 )
@@ -14,6 +15,7 @@ type SQLUserStore interface {
 	FindMTLUserByEmail(ctx context.Context, email string) (username string, found bool, err error)
 	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
 	SetMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error)
+	SetMTLSelfServicePasswordWithTelegramGrant(ctx context.Context, username, passwordHash string, expectedVersion int, actor, grantSignature string, consumedAt time.Time) (details model.MTLAdminUserDetails, err error)
 	RemoveMTLSelfServicePassword(ctx context.Context, username string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error)
 }
 
@@ -46,6 +48,6 @@ type UserProvider interface {
 
 // SelfServicePasswordProvider is implemented by providers that support password setup without an old password.
 type SelfServicePasswordProvider interface {
-	SetPasswordFromProof(username, newPassword string) (details *UserDetails, err error)
+	SetPasswordFromProof(username, newPassword, grantSignature string, consumedAt time.Time) (details *UserDetails, err error)
 	RemovePassword(username, currentPassword string, expectedVersion int) (details *UserDetails, err error)
 }
