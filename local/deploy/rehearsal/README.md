@@ -28,4 +28,12 @@ docker compose -f local/deploy/rehearsal/compose.yml --profile file up --build -
 
 Open `https://app.rehearsal.test:8443` after mapping `auth.rehearsal.test` and `app.rehearsal.test` to `127.0.0.1`, or use `curl --resolve` as the automated smoke test does. Caddy redirects an unauthenticated request to `https://auth.rehearsal.test:8443`; after login the private diagnostic endpoint returns only the four identity headers required by the Forward Auth contract. Caddy uses a disposable local CA, so browser trust is local-test-only.
 
-The automated migration, persistence, ACL, and rollback procedure is implemented by `smoke.sh` in the next task. Do not use these fixture secrets outside this disposable stack.
+Run the complete migration, persistence, ACL, and rollback rehearsal:
+
+```sh
+bash local/deploy/rehearsal/smoke.sh
+```
+
+The script removes only the two Compose volumes owned by the fixed `authelia-mtl-rehearsal` project after verifying their rehearsal labels. It leaves the final file-backend rollback phase running and preserves the populated SQLite volume for inspection. Run it a second time to prove the same procedure against another clean volume.
+
+Do not use these fixture secrets outside this disposable stack.
