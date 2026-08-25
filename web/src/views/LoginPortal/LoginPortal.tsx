@@ -13,7 +13,7 @@ import {
     SecondFactorTOTPSubRoute,
     SecondFactorWebAuthnSubRoute,
 } from "@constants/Routes";
-import { RedirectionURL } from "@constants/SearchParams";
+import { RedirectionURL, TelegramStatus } from "@constants/SearchParams";
 import { useLocalStorageMethodContext } from "@contexts/LocalStorageMethodContext";
 import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
@@ -46,7 +46,8 @@ const RedirectionErrorMessage =
 const LoginPortal = function (props: Props) {
     const location = useLocation();
     const redirectionURL = useQueryParam(RedirectionURL);
-    const { createErrorNotification } = useNotifications();
+    const telegramStatus = useQueryParam(TelegramStatus);
+    const { createErrorNotification, createInfoNotification, createWarnNotification } = useNotifications();
     const [firstFactorDisabled, setFirstFactorDisabled] = useState(true);
     const [broadcastRedirect, setBroadcastRedirect] = useState(false);
     const redirector = useRedirector();
@@ -62,6 +63,14 @@ const LoginPortal = function (props: Props) {
     useEffect(() => {
         fetchState();
     }, [fetchState]);
+
+    useEffect(() => {
+        if (telegramStatus === "pending") {
+            createInfoNotification(translate("Your Telegram registration request is awaiting approval"), 10);
+        } else if (telegramStatus === "rejected") {
+            createWarnNotification(translate("Your Telegram registration request was rejected"), 10);
+        }
+    }, [telegramStatus, createInfoNotification, createWarnNotification, translate]);
 
     useEffect(() => {
         if (state && state.authentication_level >= AuthenticationLevel.OneFactor) {
