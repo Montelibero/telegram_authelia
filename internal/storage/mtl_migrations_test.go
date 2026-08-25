@@ -20,6 +20,7 @@ func TestMTLMigrationsCreateSchema(t *testing.T) {
 		"mtl_audit_events",
 		"mtl_group_memberships",
 		"mtl_groups",
+		"mtl_registration_requests",
 		"mtl_schema_migrations",
 		"mtl_user_emails",
 		"mtl_user_identities",
@@ -28,7 +29,7 @@ func TestMTLMigrationsCreateSchema(t *testing.T) {
 
 	var version int
 	require.NoError(t, provider.db.Get(&version, `SELECT MAX(version) FROM mtl_schema_migrations`))
-	assert.Equal(t, 1, version)
+	assert.Equal(t, 2, version)
 }
 
 func TestMTLMigrationsAreIdempotent(t *testing.T) {
@@ -40,7 +41,29 @@ func TestMTLMigrationsAreIdempotent(t *testing.T) {
 
 	var count int
 	require.NoError(t, provider.db.Get(&count, `SELECT COUNT(*) FROM mtl_schema_migrations`))
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 2, count)
+}
+
+func TestMTLRegistrationSchemaConstraints(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	require.NoError(t, provider.MigrateMTL(context.Background()))
+
+	ctx := context.Background()
+	_, err := provider.db.ExecContext(ctx, `INSERT INTO mtl_registration_requests (provider, provider_user_id, status) VALUES ('telegram', '12345', 'unknown')`)
+	require.Error(t, err)
+
+	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_registration_requests (provider, provider_user_id, provider_username, proposed_username, proposed_email, status) VALUES ('telegram', '12345', 'bublik', 'bublik', 'bublik@eurmtl.me', 'pending')`)
+	require.NoError(t, err)
+
+	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_registration_requests (provider, provider_user_id, status) VALUES ('telegram', '12345', 'pending')`)
+	require.Error(t, err)
+
+	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_registration_requests (provider, provider_user_id, status, version) VALUES ('telegram', '67890', 'pending', 0)`)
+	require.Error(t, err)
+
+	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_registration_requests (provider, provider_user_id, status) VALUES ('telegram', 'no-username', 'pending')`)
+	require.NoError(t, err)
 }
 
 func TestMTLSchemaConstraints(t *testing.T) {
