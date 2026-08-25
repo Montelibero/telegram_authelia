@@ -69,7 +69,6 @@ func TestAdminApplicationUserMutationGrantRevokeDuplicatesAndStaleVersion(t *tes
 	mock, store := newAdminAPITestContext(t)
 	mock.Ctx.Configuration.Applications = []schema.Application{
 		{Slug: "grafana", Name: "Grafana", Domain: "grafana.example.com"},
-		{Slug: "grafana-alias", Name: "Grafana Alias", Domain: "alias.example.com", Group: "app:grafana"},
 	}
 	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"app:grafana"}))
 	_, err := store.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "bublik", Email: "bublik@example.com"}, "admin")
@@ -81,7 +80,7 @@ func TestAdminApplicationUserMutationGrantRevokeDuplicatesAndStaleVersion(t *tes
 	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version) + `}`)
 	AdminApplicationUserPUT(mock.Ctx)
 	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
-	assert.Equal(t, 2, permissionResponseGrantedCount(t, mock.Ctx.Response.Body(), "bublik"))
+	assert.Equal(t, 1, permissionResponseGrantedCount(t, mock.Ctx.Response.Body(), "bublik"))
 
 	mock.Ctx.Response.Reset()
 	mock.Ctx.Request.SetBodyString(`{"slug":"grafana","username":"bublik","expected_version":` + jsonInt(group.Version+1) + `}`)

@@ -10,6 +10,7 @@ import (
 // ValidateApplications validates and resolves application-to-group mappings.
 func ValidateApplications(config *[]schema.Application, validator *schema.StructValidator) {
 	slugs := make(map[string]struct{}, len(*config))
+	groups := make(map[string]struct{}, len(*config))
 
 	for i := range *config {
 		application := &(*config)[i]
@@ -35,6 +36,12 @@ func ValidateApplications(config *[]schema.Application, validator *schema.Struct
 		}
 		if strings.EqualFold(application.Group, "admins") {
 			validator.Push(fmt.Errorf("applications: group 'admins' is reserved for administrative access in entry %d", entry))
+		} else if application.Group != "" {
+			if _, exists := groups[application.Group]; exists {
+				validator.Push(fmt.Errorf("applications: duplicate group '%s'", application.Group))
+			} else {
+				groups[application.Group] = struct{}{}
+			}
 		}
 	}
 }

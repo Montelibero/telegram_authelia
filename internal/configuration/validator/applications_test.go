@@ -46,11 +46,12 @@ func TestValidateApplications(t *testing.T) {
 
 		ValidateApplications(&applications, validator)
 
-		require.Len(t, validator.Errors(), 4)
+		require.Len(t, validator.Errors(), 5)
 		assert.EqualError(t, validator.Errors()[0], "applications: option 'slug' is required for entry 1")
 		assert.EqualError(t, validator.Errors()[1], "applications: option 'name' is required for entry 2")
 		assert.EqualError(t, validator.Errors()[2], "applications: option 'domain' is required for entry 2")
 		assert.EqualError(t, validator.Errors()[3], "applications: duplicate slug 'duplicate'")
+		assert.EqualError(t, validator.Errors()[4], "applications: duplicate group 'shared'")
 		assert.Equal(t, "shared", applications[2].Group)
 		assert.Equal(t, applications[2].Group, applications[3].Group)
 	})
