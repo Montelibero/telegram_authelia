@@ -256,6 +256,38 @@ func TestRequireElevated(t *testing.T) {
 	}
 }
 
+func TestRequirePasswordFactor(t *testing.T) {
+	t.Run("rejects a federated-only session", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.External = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequirePasswordFactor(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("accepts a password-authenticated session", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequirePasswordFactor(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	})
+}
+
 func NilHandler(ctx *middlewares.AutheliaCtx) {
 	ctx.SetContentTypeTextPlain()
 	ctx.Response.SetBodyString("Example Nil")

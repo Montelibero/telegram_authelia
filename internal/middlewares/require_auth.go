@@ -20,6 +20,19 @@ func Require1FA(next RequestHandler) RequestHandler {
 	}
 }
 
+// RequirePasswordFactor requires the current session to include password authentication.
+func RequirePasswordFactor(next RequestHandler) RequestHandler {
+	return func(ctx *AutheliaCtx) {
+		userSession, err := ctx.GetSession()
+		if err != nil || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+			ctx.ReplyForbidden()
+			return
+		}
+
+		next(ctx)
+	}
+}
+
 // RequireElevated requires various elevation criteria.
 func RequireElevated(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {

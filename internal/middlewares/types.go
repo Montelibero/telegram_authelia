@@ -44,6 +44,7 @@ type Providers struct {
 	Regulator             *regulation.Regulator
 	OpenIDConnect         *oidc.OpenIDConnectProvider
 	Telegram              *telegram.LoginService
+	TelegramLink          *telegram.LinkService
 	Metrics               metrics.Provider
 	NTP                   *ntp.Provider
 	UserProvider          authentication.UserProvider

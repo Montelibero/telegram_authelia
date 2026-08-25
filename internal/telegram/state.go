@@ -23,6 +23,8 @@ type Flow struct {
 	Nonce        string
 	CodeVerifier string
 	ReturnURL    string
+	Purpose      string
+	Username     string
 	ExpiresAt    time.Time
 }
 
@@ -50,6 +52,15 @@ func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader) *S
 
 // Create creates and stores a new Telegram OIDC flow.
 func (s *StateStore) Create(returnURL string) (Flow, error) {
+	return s.create(returnURL, "login", "")
+}
+
+// CreateLink creates a flow bound to account linking for one local username.
+func (s *StateStore) CreateLink(username string) (Flow, error) {
+	return s.create("", "link", username)
+}
+
+func (s *StateStore) create(returnURL, purpose, username string) (Flow, error) {
 	state, err := s.randomValue()
 	if err != nil {
 		return Flow{}, err
@@ -70,6 +81,8 @@ func (s *StateStore) Create(returnURL string) (Flow, error) {
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
+		Purpose:      purpose,
+		Username:     username,
 		ExpiresAt:    s.now().Add(s.ttl),
 	}
 

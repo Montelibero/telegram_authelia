@@ -67,6 +67,9 @@ func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginR
 	if err != nil {
 		return LoginResult{}, err
 	}
+	if flow.Purpose != "login" {
+		return LoginResult{}, ErrInvalidState
+	}
 
 	identity, err := s.client.Exchange(ctx, code, flow)
 	if err != nil {

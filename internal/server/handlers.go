@@ -215,6 +215,11 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPostMiddlewares(middlewares.RequireElevated).
 		Build()
 
+	middlewareElevatedPassword := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequirePasswordFactor, middlewares.RequireElevated).
+		Build()
+
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
 	r.GET("/api/health", middlewareAPI(handlers.HealthGET))
 
@@ -260,6 +265,9 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 	if config.Telegram.Enabled {
 		r.GET("/api/telegram/login", middlewareAPI(handlers.TelegramLoginGET))
 		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
+		r.GET("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramLinkGET))
+		r.GET("/api/telegram/link/callback", middlewareElevatedPassword(handlers.TelegramLinkCallbackGET))
+		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
 	}
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))
 

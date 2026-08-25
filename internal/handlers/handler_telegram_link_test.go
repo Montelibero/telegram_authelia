@@ -1,0 +1,66 @@
+package handlers
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
+
+	"github.com/authelia/authelia/v4/internal/authorization"
+	"github.com/authelia/authelia/v4/internal/mocks"
+	"github.com/authelia/authelia/v4/internal/session"
+	"github.com/authelia/authelia/v4/internal/telegram"
+)
+
+func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com", AuthenticationMethodRefs: authorization.AuthenticationMethodsReferences{UsernameAndPassword: true}})
+	defer mock.Close()
+	var sessionCookie fasthttp.Cookie
+	require.NoError(t, sessionCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie("authelia_session")))
+	mock.Ctx.Request.Header.SetCookie(string(sessionCookie.Key()), string(sessionCookie.Value()))
+	mock.Ctx.Response.Reset()
+	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
+	store := &handlerIdentityLinkStore{}
+	mock.Ctx.Providers.TelegramLink = telegram.NewLinkService(client, telegram.NewStateStore(time.Minute, nil, nil), store)
+	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/link")
+	require.NotEmpty(t, mock.Ctx.Request.Header.Cookie("authelia_session"))
+	initialSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	require.Equal(t, "bublik", initialSession.Username)
+
+	TelegramLinkGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
+	require.Equal(t, "bublik", client.flow.Username)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetRequestURI("https://login.example.com:8080/api/telegram/link/callback?state=" + client.flow.State + "&code=code")
+	callbackSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	require.Equal(t, "bublik", callbackSession.Username)
+	TelegramLinkCallbackGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode(), mock.LogEntryN(0))
+	assert.Equal(t, "bublik", store.linkedUsername)
+
+	mock.Ctx.Response.Reset()
+	TelegramUnlinkDELETE(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusNoContent, mock.Ctx.Response.StatusCode())
+	assert.Equal(t, "bublik", store.unlinkedUsername)
+}
+
+type handlerIdentityLinkStore struct {
+	linkedUsername   string
+	unlinkedUsername string
+}
+
+func (s *handlerIdentityLinkStore) LinkMTLUserIdentity(_ context.Context, username, provider, providerUserID, providerUsername string) error {
+	s.linkedUsername = username
+	return nil
+}
+
+func (s *handlerIdentityLinkStore) UnlinkMTLUserIdentity(_ context.Context, username, provider string) error {
+	s.unlinkedUsername = username
+	return nil
+}
