@@ -1,0 +1,14 @@
+https://auth.rehearsal.test {
+	tls internal
+	reverse_proxy authelia:9091
+}
+
+https://app.rehearsal.test {
+	tls internal
+	forward_auth authelia:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+	}
+
+	reverse_proxy diagnostic:8080
+}

@@ -1,0 +1,56 @@
+name: authelia-mtl-rehearsal
+
+services:
+  authelia-file:
+    profiles: [file]
+    image: authelia-mtl:rehearsal
+    platform: linux/amd64
+    environment:
+      - TZ=Etc/UTC
+    volumes:
+      - ./configuration-file.yml:/config/configuration.yml:ro
+      - ./users_database.yml:/config/users_database.yml:ro
+      - rehearsal-data:/config-data
+    networks:
+      rehearsal:
+        aliases: [authelia]
+
+  authelia-sql:
+    profiles: [sql]
+    image: authelia-mtl:rehearsal
+    platform: linux/amd64
+    environment:
+      - TZ=Etc/UTC
+    volumes:
+      - ./configuration-sql.yml:/config/configuration.yml:ro
+      - ./users_database.yml:/config/users_database.yml:ro
+      - rehearsal-data:/config-data
+    networks:
+      rehearsal:
+        aliases: [authelia]
+
+  caddy:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    ports:
+      - 127.0.0.1:8443:443
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks: [rehearsal]
+
+  diagnostic:
+    build:
+      context: .
+      dockerfile: diagnostic.Dockerfile
+    networks: [rehearsal]
+
+networks:
+  rehearsal:
+
+volumes:
+  rehearsal-data:
+    labels:
+      org.montelibero.authelia.rehearsal: "true"
+  caddy-data:
+    labels:
+      org.montelibero.authelia.rehearsal: "true"
