@@ -99,9 +99,11 @@ func TestMTLRegistrationApprovalIsAtomic(t *testing.T) {
 	assert.Equal(t, model.MTLRegistrationStatusApproved, approved.Status)
 	assert.True(t, approved.ApprovedUserID.Valid)
 
-	var auditCount int
-	require.NoError(t, provider.db.GetContext(ctx, &auditCount, `SELECT COUNT(*) FROM mtl_audit_events WHERE target_id = 'bublik'`))
-	assert.Equal(t, 2, auditCount)
+	var userAuditCount, registrationAuditCount int
+	require.NoError(t, provider.db.GetContext(ctx, &userAuditCount, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type = 'user.created' AND target_type = 'user' AND target_id = 'bublik'`))
+	assert.Equal(t, 1, userAuditCount)
+	require.NoError(t, provider.db.GetContext(ctx, &registrationAuditCount, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type = 'registration.approved' AND target_type = 'registration' AND target_id = ?`, request.ID))
+	assert.Equal(t, 1, registrationAuditCount)
 }
 
 func TestMTLRegistrationApprovalRejectsIncompleteAndConflictingData(t *testing.T) {
@@ -128,6 +130,12 @@ func TestMTLRegistrationApprovalRejectsIncompleteAndConflictingData(t *testing.T
 	})
 	require.NoError(t, err)
 	_, err = provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{RequestID: conflict.ID, ExpectedVersion: conflict.Version})
+	assert.ErrorIs(t, err, ErrMTLConflict)
+	emailConflict, err := provider.UpsertMTLRegistration(ctx, model.MTLRegistrationCandidate{
+		Provider: "telegram", ProviderUserID: "email-conflict", ProposedUsername: "other", ProposedEmail: "manual@eurmtl.me",
+	})
+	require.NoError(t, err)
+	_, err = provider.ApproveMTLRegistration(ctx, model.MTLRegistrationApproval{RequestID: emailConflict.ID, ExpectedVersion: emailConflict.Version})
 	assert.ErrorIs(t, err, ErrMTLConflict)
 
 	var users int

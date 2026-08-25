@@ -189,10 +189,11 @@ func (p *SQLProvider) ApproveMTLRegistration(ctx context.Context, approval model
 	if err = requireOneMTLRegistrationRow(result); err != nil {
 		return "", err
 	}
-	for _, event := range []string{"user.created", "registration.approved"} {
-		if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, ?, 'user', ?)`), actorID, event, username); err != nil {
-			return "", fmt.Errorf("failed to audit MTL registration approval: %w", err)
-		}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, 'user.created', 'user', ?)`), actorID, username); err != nil {
+		return "", fmt.Errorf("failed to audit approved MTL user creation: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, 'registration.approved', 'registration', ?)`), actorID, fmt.Sprint(request.ID)); err != nil {
+		return "", fmt.Errorf("failed to audit MTL registration approval: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return "", fmt.Errorf("failed to commit MTL registration approval: %w", err)

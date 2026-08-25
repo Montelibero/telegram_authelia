@@ -80,7 +80,11 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	if result.RegistrationStatus != "" {
-		ctx.Redirect("/?telegram_status="+string(result.RegistrationStatus), fasthttp.StatusFound)
+		portalURL := ctx.TemplateRootURL()
+		query := portalURL.Query()
+		query.Set("telegram_status", string(result.RegistrationStatus))
+		portalURL.RawQuery = query.Encode()
+		ctx.Redirect(portalURL.String(), fasthttp.StatusFound)
 		return
 	}
 
