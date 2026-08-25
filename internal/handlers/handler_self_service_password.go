@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"path"
 	"time"
 
@@ -14,6 +15,11 @@ const telegramPasswordGrantCookie = "authelia_telegram_password_grant"
 
 type selfServicePasswordSetRequest struct {
 	NewPassword string `json:"new_password" validate:"required"`
+}
+
+type selfServicePasswordRemoveRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	ExpectedVersion int    `json:"expected_version"`
 }
 
 func TelegramPasswordProofGET(ctx *middlewares.AutheliaCtx) {
@@ -84,6 +90,35 @@ func SelfServicePasswordSetPOST(ctx *middlewares.AutheliaCtx) {
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Failed to set self-service password")
 		ctx.SetStatusCode(fasthttp.StatusConflict)
+		return
+	}
+	userSession.SessionEpoch = details.SessionEpoch
+	if err = ctx.SaveSession(userSession); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
+}
+
+func SelfServicePasswordDELETE(ctx *middlewares.AutheliaCtx) {
+	userSession, err := ctx.GetSession()
+	provider, ok := ctx.Providers.UserProvider.(authentication.SelfServicePasswordProvider)
+	if err != nil || userSession.Username == "" || !ok {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		return
+	}
+	var body selfServicePasswordRemoveRequest
+	if err = ctx.ParseBody(&body); err != nil {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+	details, err := provider.RemovePassword(userSession.Username, body.CurrentPassword, body.ExpectedVersion)
+	if err != nil {
+		if errors.Is(err, authentication.ErrIncorrectPassword) {
+			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		} else {
+			ctx.SetStatusCode(fasthttp.StatusConflict)
+		}
 		return
 	}
 	userSession.SessionEpoch = details.SessionEpoch

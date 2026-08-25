@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/mocks"
 	"github.com/authelia/authelia/v4/internal/model"
 	"github.com/authelia/authelia/v4/internal/session"
@@ -39,6 +41,38 @@ func TestTelegramPasswordProofHandlersBindCurrentSessionAndHideGrant(t *testing.
 	grantCookie := mock.Ctx.Response.Header.PeekCookie(telegramPasswordGrantCookie)
 	assert.NotEmpty(t, grantCookie)
 	assert.NotContains(t, string(mock.Ctx.Response.Header.Peek("Location")), "password_grant")
+}
+
+func TestSelfServicePasswordRemovalPreservesCurrentSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com"})
+	defer mock.Close()
+	epoch := 9
+	mock.Ctx.Providers.UserProvider = &handlerSelfServicePasswordProvider{details: &authentication.UserDetails{Username: "bublik", SessionEpoch: &epoch}}
+	current, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	require.Equal(t, "bublik", current.Username)
+	body, err := json.Marshal(selfServicePasswordRemoveRequest{CurrentPassword: "current", ExpectedVersion: 4})
+	require.NoError(t, err)
+	mock.Ctx.Request.SetBody(body)
+
+	SelfServicePasswordDELETE(mock.Ctx)
+	require.Equal(t, fasthttp.StatusNoContent, mock.Ctx.Response.StatusCode())
+	updated, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.Equal(t, &epoch, updated.SessionEpoch)
+}
+
+type handlerSelfServicePasswordProvider struct {
+	authentication.UserProvider
+	details *authentication.UserDetails
+}
+
+func (p *handlerSelfServicePasswordProvider) SetPasswordFromProof(string, string) (*authentication.UserDetails, error) {
+	return p.details, nil
+}
+
+func (p *handlerSelfServicePasswordProvider) RemovePassword(string, string, int) (*authentication.UserDetails, error) {
+	return p.details, nil
 }
 
 type handlerPasswordProofStore struct {

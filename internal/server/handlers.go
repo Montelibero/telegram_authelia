@@ -304,7 +304,10 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
 		r.GET("/api/self-service/password/telegram", middleware1FA(rateLimitTelegramStart(handlers.TelegramPasswordProofGET)))
 		r.POST("/api/self-service/password", middleware1FA(handlers.SelfServicePasswordSetPOST))
+		r.DELETE("/api/self-service/password", middleware1FA(handlers.SelfServicePasswordDELETE))
 	}
+	r.GET("/api/self-service/profile", middleware1FA(handlers.SelfServiceProfileGET))
+	r.PATCH("/api/self-service/profile", middleware1FA(handlers.SelfServiceProfilePATCH))
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))
 
 	// Only register endpoints if forgot password is not disabled.

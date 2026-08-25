@@ -14,6 +14,7 @@ type SQLUserStore interface {
 	FindMTLUserByEmail(ctx context.Context, email string) (username string, found bool, err error)
 	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
 	SetMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error)
+	RemoveMTLSelfServicePassword(ctx context.Context, username string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error)
 }
 
 // SQLUserImportStore extends SQLUserStore with atomic user creation.
@@ -46,4 +47,5 @@ type UserProvider interface {
 // SelfServicePasswordProvider is implemented by providers that support password setup without an old password.
 type SelfServicePasswordProvider interface {
 	SetPasswordFromProof(username, newPassword string) (details *UserDetails, err error)
+	RemovePassword(username, currentPassword string, expectedVersion int) (details *UserDetails, err error)
 }

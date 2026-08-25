@@ -98,6 +98,10 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 
 	require.NoError(t, provider.UpdatePassword("active", "another-password"))
 	assert.Equal(t, 6, store.users["active"].User.Version)
+	removed, err := provider.RemovePassword("active", "another-password", 6)
+	require.NoError(t, err)
+	assert.Equal(t, 4, *removed.SessionEpoch)
+	assert.False(t, store.users["active"].User.PasswordHash.Valid)
 
 	proofDetails, err := provider.SetPasswordFromProof("telegram", "first-password")
 	require.NoError(t, err)
@@ -108,6 +112,18 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 type testSQLUserStore struct {
 	users            map[string]model.MTLUserDetails
 	reconciledGroups []string
+}
+
+func (s *testSQLUserStore) RemoveMTLSelfServicePassword(_ context.Context, username string, expectedVersion int, actor string) (model.MTLAdminUserDetails, error) {
+	details, ok := s.users[username]
+	if !ok || details.User.Version != expectedVersion || actor != username {
+		return model.MTLAdminUserDetails{}, assert.AnError
+	}
+	details.User.PasswordHash = sql.NullString{}
+	details.User.Version++
+	details.User.SessionEpoch++
+	s.users[username] = details
+	return model.MTLAdminUserDetails{MTLAdminUserSummary: model.MTLAdminUserSummary{Username: username, Version: details.User.Version}, SessionEpoch: details.User.SessionEpoch}, nil
 }
 
 func (s *testSQLUserStore) ReconcileMTLGroups(_ context.Context, groups []string) error {

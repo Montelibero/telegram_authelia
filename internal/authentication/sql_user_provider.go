@@ -194,6 +194,32 @@ func (p *SQLUserProvider) SetPasswordFromProof(username, newPassword string) (*U
 	return sqlUserDetails(stored), nil
 }
 
+// RemovePassword verifies the current password and disables password login.
+func (p *SQLUserProvider) RemovePassword(username, currentPassword string, expectedVersion int) (*UserDetails, error) {
+	valid, err := p.CheckUserPassword(username, currentPassword)
+	if err != nil {
+		return nil, err
+	}
+	if !valid {
+		return nil, ErrIncorrectPassword
+	}
+	stored, err := p.loadActiveUser(username)
+	if err != nil {
+		return nil, err
+	}
+	if stored.User.Version != expectedVersion {
+		return nil, fmt.Errorf("%w: version conflict", ErrOperationFailed)
+	}
+	updated, err := p.store.RemoveMTLSelfServicePassword(context.Background(), username, expectedVersion, username)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	stored.User.Version = updated.Version
+	stored.User.SessionEpoch = updated.SessionEpoch
+	stored.User.PasswordHash.Valid = false
+	return sqlUserDetails(stored), nil
+}
+
 // Close is a no-op because the storage provider owns the database connection.
 func (p *SQLUserProvider) Close() error {
 	return nil
