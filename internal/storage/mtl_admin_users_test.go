@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,6 +56,40 @@ func TestMTLAdminUserLifecycle(t *testing.T) {
 	assert.Equal(t, "other@example.com", details.Emails[0].Email)
 	_, err = provider.DeleteMTLAdminUserEmail(ctx, "bublik", "other@example.com", details.Version, "")
 	assert.ErrorIs(t, err, ErrMTLPrimaryEmailRequired)
+}
+
+func TestMTLAdminUserConcurrentUpdateHasSingleWinner(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	details, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "race", Email: "race@example.com"}, "")
+	require.NoError(t, err)
+
+	errorsFound := make(chan error, 2)
+	var wait sync.WaitGroup
+	for _, displayName := range []string{"First", "Second"} {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, updateErr := provider.UpdateMTLAdminUser(ctx, "race", model.MTLAdminUserUpdate{ExpectedVersion: details.Version, DisplayName: displayName, Status: model.MTLUserStatusActive}, "")
+			errorsFound <- updateErr
+		}()
+	}
+	wait.Wait()
+	close(errorsFound)
+
+	successes, conflicts := 0, 0
+	for updateErr := range errorsFound {
+		switch {
+		case updateErr == nil:
+			successes++
+		case errors.Is(updateErr, ErrMTLVersionConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected concurrent update error: %v", updateErr)
+		}
+	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, conflicts)
 }
 
 func TestMTLAdminUserConflictsRollbackAndIdentityUnlink(t *testing.T) {

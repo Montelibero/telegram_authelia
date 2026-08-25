@@ -381,15 +381,19 @@ func TestHandlerMainAdminRouteWithBasePathAndMethodRestriction(t *testing.T) {
 
 	for _, tc := range []struct {
 		method   string
+		uri      string
 		expected int
 	}{
-		{method: fasthttp.MethodGet, expected: fasthttp.StatusUnauthorized},
-		{method: fasthttp.MethodPost, expected: fasthttp.StatusMethodNotAllowed},
+		{method: fasthttp.MethodGet, uri: "/auth/api/admin", expected: fasthttp.StatusUnauthorized},
+		{method: fasthttp.MethodPost, uri: "/auth/api/admin", expected: fasthttp.StatusMethodNotAllowed},
+		{method: fasthttp.MethodGet, uri: "/auth/api/admin/users", expected: fasthttp.StatusUnauthorized},
+		{method: fasthttp.MethodPost, uri: "/auth/api/admin/users", expected: fasthttp.StatusUnauthorized},
+		{method: fasthttp.MethodGet, uri: "/auth/api/admin/users/email", expected: fasthttp.StatusMethodNotAllowed},
 	} {
 		var ctx fasthttp.RequestCtx
 		ctx.Request.Header.SetMethod(tc.method)
 		ctx.Request.Header.SetHost("login.example.com")
-		ctx.Request.SetRequestURI("/auth/api/admin")
+		ctx.Request.SetRequestURI(tc.uri)
 		handler(&ctx)
 		assert.Equal(t, tc.expected, ctx.Response.StatusCode())
 	}

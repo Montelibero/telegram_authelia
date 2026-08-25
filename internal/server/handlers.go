@@ -224,12 +224,31 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
 		WithPostMiddlewares(middlewares.RequireAdmin).
 		Build()
+	middlewareAdminMutation := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminMutation).
+		Build()
 
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
 	r.GET("/api/health", middlewareAPI(handlers.HealthGET))
 
 	r.GET("/api/state", middlewareAPI(handlers.StateGET))
 	r.GET("/api/admin", middlewareAdmin(handlers.AdminGET))
+	r.GET("/api/admin/users", middlewareAdmin(handlers.AdminUsersGET))
+	r.POST("/api/admin/users", middlewareAdminMutation(handlers.AdminUserPOST))
+	r.GET("/api/admin/user", middlewareAdmin(handlers.AdminUserGET))
+	r.PATCH("/api/admin/user", middlewareAdminMutation(handlers.AdminUserPATCH))
+	r.POST("/api/admin/users/email", middlewareAdminMutation(handlers.AdminUserEmailPOST))
+	r.PUT("/api/admin/users/email/primary", middlewareAdminMutation(handlers.AdminUserEmailPrimaryPUT))
+	r.DELETE("/api/admin/users/email", middlewareAdminMutation(handlers.AdminUserEmailDELETE))
+	r.DELETE("/api/admin/users/identity", middlewareAdminMutation(handlers.AdminUserIdentityDELETE))
+	r.GET("/api/admin/groups", middlewareAdmin(handlers.AdminGroupsGET))
+	r.POST("/api/admin/groups", middlewareAdminMutation(handlers.AdminGroupPOST))
+	r.GET("/api/admin/group", middlewareAdmin(handlers.AdminGroupGET))
+	r.PATCH("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupPATCH))
+	r.DELETE("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupDELETE))
+	r.PUT("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserPUT))
+	r.DELETE("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserDELETE))
 
 	r.GET("/api/configuration", middleware1FA(handlers.ConfigurationGET))
 
