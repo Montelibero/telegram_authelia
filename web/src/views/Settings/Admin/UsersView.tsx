@@ -30,12 +30,15 @@ import {
     AdminUserCreate,
     AdminUserDetails,
     AdminUserSummary,
+    addAdminGroupUser,
     addAdminUserEmail,
     createAdminUser,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminGroup,
     getAdminUser,
     getAdminUsers,
+    removeAdminGroupUser,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
@@ -54,6 +57,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [password, setPassword] = useState("");
+    const [filter, setFilter] = useState("");
 
     const loadUsers = useCallback(async () => {
         try {
@@ -116,6 +120,15 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
         [createErrorNotification, createSuccessNotification, loadUsers, selected, translate],
     );
 
+    const normalizedFilter = filter.trim().toLowerCase();
+    const filteredUsers = users.filter(
+        (user) =>
+            !normalizedFilter ||
+            user.username.toLowerCase().includes(normalizedFilter) ||
+            user.display_name.toLowerCase().includes(normalizedFilter) ||
+            user.primary_email.toLowerCase().includes(normalizedFilter),
+    );
+
     return (
         <Stack spacing={2}>
             <Typography variant="h4">{translate("Users")}</Typography>
@@ -143,9 +156,17 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 <Card variant="outlined">
                     <CardContent>
                         <Typography variant="h6">{translate("Accounts")}</Typography>
+                        <TextField
+                            fullWidth
+                            label={translate("Filter users")}
+                            margin="dense"
+                            size="small"
+                            value={filter}
+                            onChange={(event) => setFilter(event.target.value)}
+                        />
                         {loading ? <Typography>{translate("Loading")}</Typography> : null}
                         <List>
-                            {users.map((user) => (
+                            {filteredUsers.map((user) => (
                                 <ListItem disablePadding key={user.username}>
                                     <ListItemButton onClick={() => openUser(user.username).catch(console.error)}>
                                         <ListItemText
@@ -194,6 +215,7 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
     const [confirmation, setConfirmation] = useState("");
     const [newEmail, setNewEmail] = useState("");
     const [newEmailPrimary, setNewEmailPrimary] = useState(false);
+    const [newGroup, setNewGroup] = useState("");
     const [setupLink, setSetupLink] = useState("");
     const [setupExpires, setSetupExpires] = useState("");
     const confirmed = confirmation === currentUsername;
@@ -320,6 +342,51 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
                             }
                         >
                             {translate("Add email")}
+                        </Button>
+                    </Stack>
+                    <Divider />
+                    <Typography variant="h6">{translate("Groups")}</Typography>
+                    {details.groups.map((group) => (
+                        <Stack direction="row" spacing={1} alignItems="center" key={group}>
+                            <Typography sx={{ flexGrow: 1 }}>{group}</Typography>
+                            <Button
+                                aria-label={"Remove " + group}
+                                color="error"
+                                onClick={() =>
+                                    applyDetails(async () => {
+                                        const current = await getAdminGroup(group);
+                                        await removeAdminGroupUser(
+                                            group,
+                                            details.username,
+                                            current.version,
+                                            confirmation,
+                                        );
+                                        return getAdminUser(details.username);
+                                    }).catch(console.error)
+                                }
+                            >
+                                {translate("Remove")}
+                            </Button>
+                        </Stack>
+                    ))}
+                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                        <TextField
+                            fullWidth
+                            label={translate("New group")}
+                            value={newGroup}
+                            onChange={(event) => setNewGroup(event.target.value)}
+                        />
+                        <Button
+                            disabled={!newGroup || details.groups.includes(newGroup)}
+                            onClick={() =>
+                                applyDetails(async () => {
+                                    const current = await getAdminGroup(newGroup);
+                                    await addAdminGroupUser(newGroup, details.username, current.version);
+                                    return getAdminUser(details.username);
+                                }).catch(console.error)
+                            }
+                        >
+                            {translate("Add group")}
                         </Button>
                     </Stack>
                     <Divider />
