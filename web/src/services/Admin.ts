@@ -1,8 +1,8 @@
 import axios, { AxiosRequestConfig } from "axios";
 
 import {
-    AdminApplicationsPath,
     AdminApplicationUserPath,
+    AdminApplicationsPath,
     AdminGroupPath,
     AdminGroupUserPath,
     AdminGroupsPath,
