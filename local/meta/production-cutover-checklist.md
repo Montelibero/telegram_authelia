@@ -165,15 +165,15 @@ Rollback immediately when startup, login, admin access, email propagation, ACL, 
 4. Keep both `users_database.yml` and the populated SQLite database.
 5. Start the previous image and repeat password login plus Forward Auth checks.
 
-If SQLite itself cannot be opened, restore the stopped copy only while Authelia is stopped:
+If SQLite itself cannot be opened, first preserve the failed database, then restore the verified stopped copy only while Authelia is stopped:
 
 ```sh
 docker compose stop authelia
-docker compose run --rm --entrypoint sh authelia -c 'cp /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3 && sha256sum /config/db.sqlite3'
+docker compose run --rm --entrypoint sh authelia -c 'test -s /config/backups/authelia-before-sql-users.sqlite3 && failed=/config/backups/authelia-failed-$(date -u +%Y%m%dT%H%M%SZ).sqlite3 && cp /config/db.sqlite3 "$failed" && cp /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3 && sha256sum "$failed" /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3'
 docker compose up --detach authelia
 ```
 
-Do not delete the failed SQLite database or YAML source. Preserve them for diagnosis. Keep the previous image reference and backups through two successful deployments.
+Compare the restored database checksum with the checksum recorded when the backup was created. If the backup is missing or empty, do not overwrite the failed database; keep Authelia stopped and recover storage separately. Do not delete the quarantined failed SQLite database or YAML source. Preserve them for diagnosis. Keep the previous image reference and backups through two successful deployments.
 
 ## Result record
 

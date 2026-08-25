@@ -95,14 +95,18 @@ If startup or a smoke test fails:
 3. Keep `/config/users_database.yml` in place and unchanged.
 4. Start the upstream image and repeat password and Forward Auth smoke tests.
 
-The upstream image ignores the overlay-owned `mtl_*` tables, so restoring the database is not normally required. If the SQLite file itself is damaged, stop Authelia and restore the verified backup:
+The upstream image ignores the overlay-owned `mtl_*` tables, so restoring the database is not normally required. If the SQLite file itself is damaged, stop Authelia, preserve the failed database, and restore the verified backup:
 
 ```sh
+test -s /config/backups/authelia-before-sql-users.sqlite3
+failed=/config/backups/authelia-failed-$(date -u +%Y%m%dT%H%M%SZ).sqlite3
+cp /config/db.sqlite3 "$failed"
 cp /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3
+sha256sum "$failed" /config/backups/authelia-before-sql-users.sqlite3 /config/db.sqlite3
 authelia --config /config/configuration.yml storage schema-info
 ```
 
-Do not delete the failed database or YAML source during rollback. Preserve both for diagnosis.
+Compare the restored checksum with the checksum recorded when the backup was created. If the backup is missing or empty, do not overwrite the failed database; keep Authelia stopped and recover storage separately. Do not delete the quarantined failed database or YAML source during rollback. Preserve both for diagnosis.
 
 ## Rehearsal record
 

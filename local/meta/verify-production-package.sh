@@ -32,5 +32,7 @@ grep -Fq -- '--dry-run' "${CHECKLIST}"
 grep -Fq 'Remote-Email' "${CHECKLIST}"
 grep -Fq 'Rollback' "${CHECKLIST}"
 grep -Fq 'STOP' "${CHECKLIST}"
+grep -Fq 'authelia-failed-' "${CHECKLIST}"
+grep -Fq 'authelia-failed-' "${ROOT}/sql-user-cutover.md"
 
 echo "production handoff static verification passed"
