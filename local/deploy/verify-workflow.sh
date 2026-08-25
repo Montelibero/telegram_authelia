@@ -4,6 +4,8 @@ set -euo pipefail
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly WORKFLOW="${ROOT}/.github/workflows/deploy-image.yml"
+readonly DOCKERFILE="${ROOT}/local/deploy/Dockerfile"
+readonly DOCKERIGNORE="${DOCKERFILE}.dockerignore"
 
 if [[ ! -f "${WORKFLOW}" ]]; then
   echo "Missing deployment image workflow: ${WORKFLOW}" >&2
@@ -25,6 +27,17 @@ require_literal "contents: read"
 require_literal "platforms: linux/amd64"
 require_literal "ghcr.io/montelibero/authelia:latest"
 require_literal "push: true"
+require_literal "file: ./local/deploy/Dockerfile"
+
+if [[ ! -f "${DOCKERFILE}" ]]; then
+  echo "Missing deployment Dockerfile: ${DOCKERFILE}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${DOCKERIGNORE}" ]]; then
+  echo "Missing deployment Docker ignore file: ${DOCKERIGNORE}" >&2
+  exit 1
+fi
 
 if grep -Eq 'uses: [^#[:space:]]+@(v[0-9]+|main|master)([[:space:]]|$)' "${WORKFLOW}"; then
   echo "Workflow contains a mutable action reference" >&2
