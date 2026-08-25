@@ -23,8 +23,9 @@ type UserSession struct {
 	Username    string
 	DisplayName string
 	// TODO(c.michaud): move groups out of the session.
-	Groups []string
-	Emails []string
+	Groups       []string
+	Emails       []string
+	SessionEpoch *int
 
 	KeepMeLoggedIn bool
 	LastActivity   int64

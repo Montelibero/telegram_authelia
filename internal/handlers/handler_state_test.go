@@ -92,6 +92,26 @@ func (s *StateGetSuite) TestShouldReturnAuthenticationLevelFromSession() {
 	assert.Equal(s.T(), expectedBody, actualBody)
 }
 
+func (s *StateGetSuite) TestShouldReturnAdministratorCapabilityFromSession() {
+	userSession, err := s.mock.Ctx.GetSession()
+	s.Require().NoError(err)
+
+	userSession.Username = "admin"
+	userSession.Groups = []string{"users", "admins"}
+	s.Require().NoError(s.mock.Ctx.SaveSession(userSession))
+
+	StateGET(s.mock.Ctx)
+
+	type Response struct {
+		Status string
+		Data   StateResponse
+	}
+
+	actualBody := Response{}
+	require.NoError(s.T(), json.Unmarshal(s.mock.Ctx.Response.Body(), &actualBody))
+	assert.True(s.T(), actualBody.Data.Administrator)
+}
+
 func TestRunStateGetSuite(t *testing.T) {
 	s := new(StateGetSuite)
 	suite.Run(t, s)

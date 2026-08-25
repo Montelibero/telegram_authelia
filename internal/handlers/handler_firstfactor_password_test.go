@@ -1549,6 +1549,32 @@ func (s *FirstFactorReauthenticateSuite) TestShouldSaveUsernameFromAuthenticatio
 	assert.Equal(s.T(), []string{"dev", "admins"}, userSession.Groups)
 }
 
+func TestFirstFactorReauthenticateAddsPasswordProofWithoutReplacingExternalSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.SetOneFactorExternal(mock.Clock.Now(), &authentication.UserDetails{Username: testValue})
+	userSession.AuthenticationMethodRefs = authorization.AuthenticationMethodsReferences{External: true}
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	mock.StorageMock.EXPECT().LoadBannedIP(gomock.Eq(mock.Ctx), gomock.Any()).Return(nil, nil)
+	mock.StorageMock.EXPECT().LoadBannedUser(gomock.Eq(mock.Ctx), gomock.Eq(testValue)).Return(nil, nil)
+	mock.UserProviderMock.EXPECT().CheckUserPassword(gomock.Eq(testValue), gomock.Eq("hello")).Return(true, nil)
+	mock.UserProviderMock.EXPECT().GetDetails(gomock.Eq(testValue)).Return(&authentication.UserDetails{Username: testValue, Groups: []string{"admins"}}, nil)
+	mock.StorageMock.EXPECT().AppendAuthenticationLog(mock.Ctx, gomock.Any()).Return(nil)
+	mock.Ctx.Request.SetBodyString(`{"password":"hello"}`)
+
+	FirstFactorReauthenticatePOST(nil)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	userSession, err = mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.True(t, userSession.AuthenticationMethodRefs.External)
+	assert.True(t, userSession.AuthenticationMethodRefs.UsernameAndPassword)
+	assert.True(t, userSession.AuthenticationMethodRefs.KnowledgeBasedAuthentication)
+}
+
 type FirstFactorReauthenticateRedirectionSuite struct {
 	suite.Suite
 

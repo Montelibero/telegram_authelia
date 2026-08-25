@@ -48,6 +48,7 @@ func newStorageCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 		newStorageEncryptionCmd(ctx),
 		newStorageUserCmd(ctx),
 		newStorageRegistrationCmd(ctx),
+		newStorageGroupCmd(ctx),
 		newStorageBansCmd(ctx),
 	)
 

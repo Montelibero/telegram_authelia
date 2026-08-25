@@ -16,6 +16,9 @@ export const SettingsTwoFactorAuthenticationSubRoute: string = "/two-factor-auth
 export const RevokeOneTimeCodeRoute: string = "/revoke/one-time-code";
 export const RevokeResetPasswordRoute: string = "/revoke/reset-password";
 export const SecuritySubRoute: string = "/security";
+export const AdminUsersSubRoute: string = "/admin/users";
+export const AdminPendingSubRoute: string = "/admin/pending";
+export const AdminGroupsSubRoute: string = "/admin/groups";
 
 export const ConsentRoute: string = "/consent";
 export const ConsentCompletionSubRoute: string = "/completion";

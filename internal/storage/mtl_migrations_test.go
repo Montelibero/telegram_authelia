@@ -29,7 +29,11 @@ func TestMTLMigrationsCreateSchema(t *testing.T) {
 
 	var version int
 	require.NoError(t, provider.db.Get(&version, `SELECT MAX(version) FROM mtl_schema_migrations`))
-	assert.Equal(t, 2, version)
+	assert.Equal(t, 3, version)
+
+	var sessionEpochColumn int
+	require.NoError(t, provider.db.Get(&sessionEpochColumn, `SELECT COUNT(*) FROM pragma_table_info('mtl_users') WHERE name = 'session_epoch'`))
+	assert.Equal(t, 1, sessionEpochColumn)
 }
 
 func TestMTLMigrationsAreIdempotent(t *testing.T) {
@@ -41,7 +45,7 @@ func TestMTLMigrationsAreIdempotent(t *testing.T) {
 
 	var count int
 	require.NoError(t, provider.db.Get(&count, `SELECT COUNT(*) FROM mtl_schema_migrations`))
-	assert.Equal(t, 2, count)
+	assert.Equal(t, 3, count)
 }
 
 func TestMTLRegistrationSchemaConstraints(t *testing.T) {
@@ -96,6 +100,11 @@ func TestMTLSchemaConstraints(t *testing.T) {
 	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_user_identities (user_id, provider, provider_user_id) VALUES (?, 'telegram', '12345')`, userID)
 	require.NoError(t, err)
 	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_user_identities (user_id, provider, provider_user_id) VALUES (2, 'telegram', '12345')`)
+	require.Error(t, err)
+
+	_, err = provider.db.ExecContext(ctx, `INSERT INTO mtl_groups (name, version) VALUES ('admins', 0)`)
+	require.Error(t, err)
+	_, err = provider.db.ExecContext(ctx, `UPDATE mtl_users SET session_epoch = -1 WHERE id = ?`, userID)
 	require.Error(t, err)
 }
 

@@ -17,10 +17,11 @@ import (
 
 // UserDetails represent the details retrieved for a given user.
 type UserDetails struct {
-	Username    string
-	DisplayName string
-	Emails      []string
-	Groups      []string
+	Username     string
+	DisplayName  string
+	Emails       []string
+	Groups       []string
+	SessionEpoch *int
 }
 
 // Addresses returns the Emails []string as []mail.Address formatted with DisplayName as the Name attribute.

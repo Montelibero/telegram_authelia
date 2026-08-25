@@ -128,6 +128,11 @@ func (p *SQLUserProvider) Close() error {
 	return nil
 }
 
+// IsMTLProvider identifies the SQL user backend for session epoch validation.
+func (p *SQLUserProvider) IsMTLProvider() bool {
+	return true
+}
+
 func (p *SQLUserProvider) loadActiveUser(username string) (details model.MTLUserDetails, err error) {
 	details, found, err := p.store.LoadMTLUser(context.Background(), username)
 	if err != nil {
@@ -143,9 +148,10 @@ func (p *SQLUserProvider) loadActiveUser(username string) (details model.MTLUser
 
 func sqlUserDetails(d model.MTLUserDetails) *UserDetails {
 	return &UserDetails{
-		Username:    d.User.Username,
-		DisplayName: d.User.DisplayName,
-		Emails:      []string{d.PrimaryEmail},
-		Groups:      append([]string(nil), d.Groups...),
+		Username:     d.User.Username,
+		DisplayName:  d.User.DisplayName,
+		Emails:       []string{d.PrimaryEmail},
+		Groups:       append([]string(nil), d.Groups...),
+		SessionEpoch: &d.User.SessionEpoch,
 	}
 }

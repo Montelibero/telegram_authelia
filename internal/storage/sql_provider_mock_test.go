@@ -310,7 +310,7 @@ func TestSQLProviderSimpleExecErrors(t *testing.T) {
 		{
 			name: "ShouldReturnErrConsumeIdentityVerification",
 			setup: func(db *mocks.MockSQLXDB) {
-				db.EXPECT().ExecContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "jti").Return(nil, errors.New("boom"))
+				db.EXPECT().ExecContext(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "jti", gomock.Any()).Return(nil, errors.New("boom"))
 			},
 			invoke: func(p *storage.SQLProvider) error {
 				return p.ConsumeIdentityVerification(context.Background(), "jti", model.NullIP{})

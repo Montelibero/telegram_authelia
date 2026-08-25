@@ -57,6 +57,8 @@ type MTLRegistrationApproval struct {
 	RequestID       int64
 	ExpectedVersion int
 	Username        string
+	DisplayName     string
 	Email           string
+	Groups          []string
 	ActorUsername   string
 }

@@ -76,6 +76,14 @@ func (s *UserSession) SetOneFactorReauthenticate(now time.Time, details *authent
 	s.DisplayName = details.DisplayName
 	s.Groups = details.Groups
 	s.Emails = details.Emails
+	s.SessionEpoch = details.SessionEpoch
+}
+
+// SetPasswordReauthenticate refreshes the profile and records a successful password proof without replacing the original login method.
+func (s *UserSession) SetPasswordReauthenticate(now time.Time, details *authentication.UserDetails) {
+	s.SetOneFactorReauthenticate(now, details)
+	s.AuthenticationMethodRefs.KnowledgeBasedAuthentication = true
+	s.AuthenticationMethodRefs.UsernameAndPassword = true
 }
 
 // SetTwoFactorTOTP sets the relevant TOTP AMR's and sets the factor to 2FA.

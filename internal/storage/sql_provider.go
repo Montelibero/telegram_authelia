@@ -962,8 +962,21 @@ func (p *SQLProvider) SaveIdentityVerification(ctx context.Context, verification
 
 // ConsumeIdentityVerification marks an identity verification record in the storage provider as consumed.
 func (p *SQLProvider) ConsumeIdentityVerification(ctx context.Context, jti string, ip model.NullIP) (err error) {
-	if _, err = p.db.ExecContext(ctx, p.sqlConsumeIdentityVerification, time.Now(), ip, jti); err != nil {
+	now := time.Now()
+
+	result, err := p.db.ExecContext(ctx, p.sqlConsumeIdentityVerification, now, ip, jti, now)
+	if err != nil {
 		return fmt.Errorf("error consuming identity verification with jti '%s': %w", jti, err)
+	}
+
+	var affected int64
+
+	if affected, err = result.RowsAffected(); err != nil {
+		return fmt.Errorf("error checking consumed identity verification with jti '%s': %w", jti, err)
+	}
+
+	if affected != 1 {
+		return fmt.Errorf("identity verification with jti '%s' is not active", jti)
 	}
 
 	return nil

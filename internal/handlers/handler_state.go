@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"slices"
+
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/session"
 )
@@ -23,6 +25,7 @@ func StateGET(ctx *middlewares.AutheliaCtx) {
 		Username:            userSession.Username,
 		AuthenticationLevel: userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA),
 		FactorKnowledge:     userSession.AuthenticationMethodRefs.FactorKnowledge(),
+		Administrator:       slices.Contains(userSession.Groups, "admins"),
 	}
 
 	if uri := ctx.GetDefaultRedirectionURL(); uri != nil {

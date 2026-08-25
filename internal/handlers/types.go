@@ -204,6 +204,7 @@ type StateResponse struct {
 	Username              string               `json:"username"`
 	AuthenticationLevel   authentication.Level `json:"authentication_level"`
 	FactorKnowledge       bool                 `json:"factor_knowledge"`
+	Administrator         bool                 `json:"administrator,omitempty"`
 	DefaultRedirectionURL string               `json:"default_redirection_url,omitempty"`
 }
 

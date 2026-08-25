@@ -1,6 +1,15 @@
 import { ReactNode, SyntheticEvent, useCallback, useEffect, useState } from "react";
 
-import { Close, Dashboard, Menu, Security, SystemSecurityUpdateGood } from "@mui/icons-material";
+import {
+    Close,
+    Dashboard,
+    Groups,
+    HowToReg,
+    ManageAccounts,
+    Menu,
+    Security,
+    SystemSecurityUpdateGood,
+} from "@mui/icons-material";
 import {
     AppBar,
     Box,
@@ -19,6 +28,9 @@ import { useTranslation } from "react-i18next";
 
 import { EncodedName } from "@constants/constants";
 import {
+    AdminGroupsSubRoute,
+    AdminPendingSubRoute,
+    AdminUsersSubRoute,
     IndexRoute,
     SecuritySubRoute,
     SettingsRoute,
@@ -27,6 +39,7 @@ import {
 import { useRouterNavigate } from "@hooks/RouterNavigate";
 
 export interface Props {
+    administrator?: boolean;
     children?: ReactNode;
     drawerWidth?: number;
 }
@@ -64,15 +77,17 @@ const SettingsLayout = function (props: Props) {
             </Typography>
             <Divider />
             <List>
-                {navItems.map((item) => (
-                    <DrawerNavItem
-                        key={item.keyname}
-                        keyname={item.keyname}
-                        text={translate(item.text)}
-                        pathname={item.pathname}
-                        icon={item.icon}
-                    />
-                ))}
+                {navItems
+                    .filter((item) => !item.administrator || props.administrator)
+                    .map((item) => (
+                        <DrawerNavItem
+                            key={item.keyname}
+                            keyname={item.keyname}
+                            text={translate(item.text)}
+                            pathname={item.pathname}
+                            icon={item.icon}
+                        />
+                    ))}
             </List>
         </Box>
     );
@@ -127,6 +142,7 @@ const SettingsLayout = function (props: Props) {
 };
 
 interface NavItem {
+    administrator?: boolean;
     keyname: string;
     text: string;
     pathname: string;
@@ -140,6 +156,27 @@ const navItems: NavItem[] = [
         keyname: "security",
         pathname: `${SettingsRoute}${SecuritySubRoute}`,
         text: "Security",
+    },
+    {
+        administrator: true,
+        icon: <ManageAccounts color={"primary"} />,
+        keyname: "admin-users",
+        pathname: `${SettingsRoute}${AdminUsersSubRoute}`,
+        text: "Users",
+    },
+    {
+        administrator: true,
+        icon: <HowToReg color={"primary"} />,
+        keyname: "admin-pending",
+        pathname: `${SettingsRoute}${AdminPendingSubRoute}`,
+        text: "Pending registrations",
+    },
+    {
+        administrator: true,
+        icon: <Groups color={"primary"} />,
+        keyname: "admin-groups",
+        pathname: `${SettingsRoute}${AdminGroupsSubRoute}`,
+        text: "Groups",
     },
     {
         icon: <SystemSecurityUpdateGood color={"primary"} />,

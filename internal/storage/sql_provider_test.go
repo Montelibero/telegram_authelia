@@ -416,6 +416,61 @@ func TestSQLProviderIdentityVerification(t *testing.T) {
 
 		require.NoError(t, provider.SaveIdentityVerification(ctx, verification))
 		require.NoError(t, provider.ConsumeIdentityVerification(ctx, jti.String(), model.NullIP{}))
+		require.Error(t, provider.ConsumeIdentityVerification(ctx, jti.String(), model.NullIP{}))
+	})
+
+	t.Run("ShouldOnlyConsumeVerificationOnceConcurrently", func(t *testing.T) {
+		jti, err := uuid.NewRandom()
+		require.NoError(t, err)
+
+		verification := model.IdentityVerification{
+			JTI:       jti,
+			IssuedAt:  time.Now().Truncate(time.Second),
+			IssuedIP:  model.NewIP(net.ParseIP("127.0.0.1")),
+			ExpiresAt: time.Now().Add(time.Hour).Truncate(time.Second),
+			Action:    "reset_password",
+			Username:  "john",
+		}
+
+		require.NoError(t, provider.SaveIdentityVerification(ctx, verification))
+
+		start := make(chan struct{})
+		results := make(chan error, 2)
+
+		for range 2 {
+			go func() {
+				<-start
+				results <- provider.ConsumeIdentityVerification(ctx, jti.String(), model.NullIP{})
+			}()
+		}
+
+		close(start)
+
+		var successes int
+		for range 2 {
+			if err = <-results; err == nil {
+				successes++
+			}
+		}
+
+		assert.Equal(t, 1, successes)
+	})
+
+	t.Run("ShouldNotConsumeExpiredVerification", func(t *testing.T) {
+		jti, err := uuid.NewRandom()
+		require.NoError(t, err)
+
+		verification := model.IdentityVerification{
+			JTI:       jti,
+			IssuedAt:  time.Now().Add(-time.Hour).Truncate(time.Second),
+			IssuedIP:  model.NewIP(net.ParseIP("127.0.0.1")),
+			ExpiresAt: time.Now().Add(-time.Minute).Truncate(time.Second),
+			Action:    "reset_password",
+			Username:  "john",
+		}
+
+		require.NoError(t, provider.SaveIdentityVerification(ctx, verification))
+		require.Error(t, provider.ConsumeIdentityVerification(ctx, jti.String(), model.NullIP{}))
 	})
 
 	t.Run("ShouldRevokeVerification", func(t *testing.T) {

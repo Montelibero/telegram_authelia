@@ -11,7 +11,7 @@ import (
 // Require1FA check if user has enough permissions to execute the next handler.
 func Require1FA(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {
-		if s, err := ctx.GetSession(); err != nil || s.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA) < authentication.OneFactor {
+		if s, err := ctx.GetSession(); err != nil || s.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA) < authentication.OneFactor || !validateMTLSession(ctx, &s) {
 			ctx.ReplyForbidden()
 			return
 		}
@@ -20,11 +20,32 @@ func Require1FA(next RequestHandler) RequestHandler {
 	}
 }
 
+func validateMTLSession(ctx *AutheliaCtx, userSession *session.UserSession) bool {
+	provider, managed := ctx.Providers.UserProvider.(interface{ IsMTLProvider() bool })
+	if !managed || !provider.IsMTLProvider() {
+		return true
+	}
+	if userSession.SessionEpoch == nil {
+		if destroyErr := ctx.DestroySession(); destroyErr != nil {
+			ctx.Logger.WithError(destroyErr).Error("Failed to destroy a legacy MTL user session")
+		}
+		return false
+	}
+	details, err := ctx.Providers.UserProvider.GetDetails(userSession.Username)
+	if err == nil && details.SessionEpoch != nil && *details.SessionEpoch == *userSession.SessionEpoch {
+		return true
+	}
+	if destroyErr := ctx.DestroySession(); destroyErr != nil {
+		ctx.Logger.WithError(destroyErr).Error("Failed to destroy a revoked user session")
+	}
+	return false
+}
+
 // RequirePasswordFactor requires the current session to include password authentication.
 func RequirePasswordFactor(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {
 		userSession, err := ctx.GetSession()
-		if err != nil || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+		if err != nil || !validateMTLSession(ctx, &userSession) || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
 			ctx.ReplyForbidden()
 			return
 		}
@@ -38,7 +59,7 @@ func RequirePasswordFactor(next RequestHandler) RequestHandler {
 func RequireFreshPasswordElevation(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {
 		userSession, err := ctx.GetSession()
-		if err != nil || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+		if err != nil || !validateMTLSession(ctx, &userSession) || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
 			ctx.ReplyForbidden()
 			return
 		}
@@ -75,6 +96,10 @@ func RequireElevated(next RequestHandler) RequestHandler {
 				ctx.Logger.WithError(err).Error("Error occurred encoding JSON response during an elevation check.")
 			}
 
+			return
+		}
+		if !validateMTLSession(ctx, &userSession) {
+			ctx.ReplyForbidden()
 			return
 		}
 
