@@ -13,6 +13,9 @@ export const FirstFactorReauthenticatePath = basePath + "/api/firstfactor/reauth
 export const TelegramLoginPath = basePath + "/api/telegram/login";
 export const TelegramLinkPath = basePath + "/api/telegram/link";
 export const TelegramLinkStatusPath = basePath + "/api/telegram/link/status";
+export const SelfServiceProfilePath = basePath + "/api/self-service/profile";
+export const SelfServicePasswordPath = basePath + "/api/self-service/password";
+export const SelfServicePasswordTelegramPath = basePath + "/api/self-service/password/telegram";
 
 export const TOTPRegistrationPath = basePath + "/api/secondfactor/totp/register";
 export const TOTPConfigurationPath = basePath + "/api/secondfactor/totp";
