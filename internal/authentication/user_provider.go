@@ -13,6 +13,7 @@ type SQLUserStore interface {
 	LoadMTLUser(ctx context.Context, username string) (details model.MTLUserDetails, found bool, err error)
 	FindMTLUserByEmail(ctx context.Context, email string) (username string, found bool, err error)
 	UpdateMTLUserPassword(ctx context.Context, userID int64, passwordHash *string, expectedVersion int) (err error)
+	SetMTLSelfServicePassword(ctx context.Context, username, passwordHash string, expectedVersion int, actor string) (details model.MTLAdminUserDetails, err error)
 }
 
 // SQLUserImportStore extends SQLUserStore with atomic user creation.

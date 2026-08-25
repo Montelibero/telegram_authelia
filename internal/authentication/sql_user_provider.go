@@ -118,12 +118,10 @@ func (p *SQLUserProvider) UpdatePassword(username, newPassword string) (err erro
 		return ErrPasswordWeak
 	}
 
-	digest, err := p.hash.Hash(newPassword)
+	encoded, err := p.hashPassword(newPassword)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
+		return err
 	}
-
-	encoded := digest.Encode()
 	if err = p.store.UpdateMTLUserPassword(context.Background(), stored.User.ID, &encoded, stored.User.Version); err != nil {
 		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
 	}
@@ -150,7 +148,27 @@ func (p *SQLUserProvider) ChangePassword(username, oldPassword, newPassword stri
 		return ErrIncorrectPassword
 	}
 
-	return p.UpdatePassword(username, newPassword)
+	stored, err := p.loadActiveUser(username)
+	if err != nil {
+		return err
+	}
+	encoded, err := p.hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if _, err = p.store.SetMTLSelfServicePassword(context.Background(), username, encoded, stored.User.Version, username); err != nil {
+		return fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+
+	return nil
+}
+
+func (p *SQLUserProvider) hashPassword(password string) (string, error) {
+	digest, err := p.hash.Hash(password)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrOperationFailed, err)
+	}
+	return digest.Encode(), nil
 }
 
 // Close is a no-op because the storage provider owns the database connection.

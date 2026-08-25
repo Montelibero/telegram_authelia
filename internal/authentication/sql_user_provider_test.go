@@ -77,7 +77,7 @@ func TestSQLUserProviderStartupReconcilesEnabledApplicationGroups(t *testing.T) 
 
 func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
-		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4}, PrimaryEmail: "active@eurmtl.me"},
+		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4, SessionEpoch: 2}, PrimaryEmail: "active@eurmtl.me"},
 	}}
 	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
 	require.NoError(t, provider.StartupCheck())
@@ -88,6 +88,7 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 
 	updated := store.users["active"]
 	assert.Equal(t, 5, updated.User.Version)
+	assert.Equal(t, 3, updated.User.SessionEpoch)
 	digest, err := schema.DecodePasswordDigest(updated.User.PasswordHash.String)
 	require.NoError(t, err)
 	valid, err := digest.MatchAdvanced("new-password")
@@ -142,4 +143,19 @@ func (s *testSQLUserStore) UpdateMTLUserPassword(_ context.Context, userID int64
 	}
 
 	return assert.AnError
+}
+
+func (s *testSQLUserStore) SetMTLSelfServicePassword(_ context.Context, username, passwordHash string, expectedVersion int, actor string) (model.MTLAdminUserDetails, error) {
+	details, ok := s.users[username]
+	if !ok || details.User.Version != expectedVersion || actor != username {
+		return model.MTLAdminUserDetails{}, assert.AnError
+	}
+	details.User.PasswordHash = sql.NullString{String: passwordHash, Valid: true}
+	details.User.Version++
+	details.User.SessionEpoch++
+	s.users[username] = details
+	return model.MTLAdminUserDetails{
+		MTLAdminUserSummary: model.MTLAdminUserSummary{Username: username, Version: details.User.Version, PasswordEnabled: true},
+		SessionEpoch:        details.User.SessionEpoch,
+	}, nil
 }
