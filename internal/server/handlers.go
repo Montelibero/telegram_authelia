@@ -235,6 +235,7 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 	r.GET("/api/state", middlewareAPI(handlers.StateGET))
 	r.GET("/api/admin", middlewareAdmin(handlers.AdminGET))
 	r.GET("/api/admin/users", middlewareAdmin(handlers.AdminUsersGET))
+	r.GET("/api/admin/applications", middlewareAdmin(handlers.AdminApplicationsGET))
 	r.POST("/api/admin/users", middlewareAdminMutation(handlers.AdminUserPOST))
 	r.GET("/api/admin/user", middlewareAdmin(handlers.AdminUserGET))
 	r.PATCH("/api/admin/user", middlewareAdminMutation(handlers.AdminUserPATCH))
