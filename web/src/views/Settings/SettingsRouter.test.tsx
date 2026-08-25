@@ -21,6 +21,7 @@ vi.mock("@hooks/RouterNavigate", () => ({
 vi.mock("@constants/Routes", () => ({
     AdminGroupsSubRoute: "/admin/groups",
     AdminPendingSubRoute: "/admin/pending",
+    AdminPermissionsSubRoute: "/admin/permissions",
     AdminUsersSubRoute: "/admin/users",
     IndexRoute: "/",
     SecuritySubRoute: "/security",
@@ -42,6 +43,10 @@ vi.mock("@views/Settings/Admin/PendingView", () => ({
 
 vi.mock("@views/Settings/Admin/GroupsView", () => ({
     default: () => <div data-testid="admin-groups-view" />,
+}));
+
+vi.mock("@views/Settings/Admin/PermissionsView", () => ({
+    default: () => <div data-testid="admin-permissions-view" />,
 }));
 
 vi.mock("@views/Settings/SettingsView", () => ({
@@ -148,6 +153,24 @@ it("renders admin users route for an administrator", async () => {
     expect(screen.getByTestId("admin-users-view")).toBeInTheDocument();
 });
 
+it("renders permissions route only for an administrator", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { administrator: true, authentication_level: 1, factor_knowledge: true, username: "admin" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    await act(async () => {
+        render(
+            <MemoryRouter initialEntries={["/admin/permissions"]}>
+                <SettingsRouter />
+            </MemoryRouter>,
+        );
+    });
+    expect(screen.getByTestId("admin-permissions-view")).toBeInTheDocument();
+});
+
 it("redirects a non-administrator away from an admin route", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(useAutheliaState).mockReturnValue([
@@ -159,6 +182,24 @@ it("redirects a non-administrator away from an admin route", async () => {
     await act(async () => {
         render(
             <MemoryRouter initialEntries={["/admin/users"]}>
+                <SettingsRouter />
+            </MemoryRouter>,
+        );
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("/settings");
+});
+
+it("redirects a non-administrator away from permissions", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: true, username: "user" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    await act(async () => {
+        render(
+            <MemoryRouter initialEntries={["/admin/permissions"]}>
                 <SettingsRouter />
             </MemoryRouter>,
         );

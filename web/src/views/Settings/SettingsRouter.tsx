@@ -5,6 +5,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import {
     AdminGroupsSubRoute,
     AdminPendingSubRoute,
+    AdminPermissionsSubRoute,
     AdminUsersSubRoute,
     IndexRoute,
     SecuritySubRoute,
@@ -17,6 +18,7 @@ import SettingsLayout from "@layouts/SettingsLayout";
 import { AuthenticationLevel } from "@services/State";
 import GroupsView from "@views/Settings/Admin/GroupsView";
 import PendingView from "@views/Settings/Admin/PendingView";
+import PermissionsView from "@views/Settings/Admin/PermissionsView";
 import UsersView from "@views/Settings/Admin/UsersView";
 import SecurityView from "@views/Settings/Security/SecurityView";
 import SettingsView from "@views/Settings/SettingsView";
@@ -38,9 +40,12 @@ const SettingsRouter = function () {
     }, [state, fetchStateError, navigate]);
 
     useEffect(() => {
-        const adminRoute = [AdminUsersSubRoute, AdminPendingSubRoute, AdminGroupsSubRoute].some((route) =>
-            location.pathname.endsWith(route),
-        );
+        const adminRoute = [
+            AdminUsersSubRoute,
+            AdminPendingSubRoute,
+            AdminGroupsSubRoute,
+            AdminPermissionsSubRoute,
+        ].some((route) => location.pathname.endsWith(route));
         if (state && adminRoute && !state.administrator) {
             navigate(SettingsRoute);
         }
@@ -59,6 +64,7 @@ const SettingsRouter = function () {
                 {state?.administrator ? (
                     <Route path={AdminGroupsSubRoute} element={<GroupsView currentUsername={state.username} />} />
                 ) : null}
+                {state?.administrator ? <Route path={AdminPermissionsSubRoute} element={<PermissionsView />} /> : null}
             </Routes>
         </SettingsLayout>
     );

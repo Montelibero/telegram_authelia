@@ -56,6 +56,8 @@ export const AdminRegistrationsPath = basePath + "/api/admin/registrations";
 export const AdminRegistrationPath = basePath + "/api/admin/registration";
 export const AdminRegistrationApprovePath = basePath + "/api/admin/registration/approve";
 export const AdminRegistrationRejectPath = basePath + "/api/admin/registration/reject";
+export const AdminApplicationsPath = basePath + "/api/admin/applications";
+export const AdminApplicationUserPath = basePath + "/api/admin/application/user";
 
 export const ConfigurationPath = basePath + "/api/configuration";
 export const PasswordPolicyConfigurationPath = basePath + "/api/configuration/password-policy";

@@ -15,6 +15,7 @@ vi.mock("@constants/constants", () => ({
 vi.mock("@constants/Routes", () => ({
     AdminGroupsSubRoute: "/admin/groups",
     AdminPendingSubRoute: "/admin/pending",
+    AdminPermissionsSubRoute: "/admin/permissions",
     AdminUsersSubRoute: "/admin/users",
     IndexRoute: "/",
     SecuritySubRoute: "/security",
@@ -71,6 +72,7 @@ it("renders administrator navigation for administrators", async () => {
     expect(screen.getByText("Users")).toBeInTheDocument();
     expect(screen.getByText("Pending registrations")).toBeInTheDocument();
     expect(screen.getByText("Groups")).toBeInTheDocument();
+    expect(screen.getByText("Permissions")).toBeInTheDocument();
 });
 
 it("sets the document title", async () => {
