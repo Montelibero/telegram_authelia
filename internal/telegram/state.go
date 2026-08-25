@@ -41,9 +41,10 @@ type Flow struct {
 type StateReplayStore interface {
 	SaveOneTimeCode(ctx context.Context, code model.OneTimeCode) (signature string, err error)
 	ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error)
+	PurgeTelegramStates(ctx context.Context, before time.Time) error
 }
 
-// StateStore seals short-lived OIDC flows and tracks local replay attempts.
+// StateStore seals short-lived OIDC flows and uses shared storage for cluster-wide replay protection.
 type StateStore struct {
 	ttl    time.Duration
 	now    func() time.Time
@@ -108,6 +109,9 @@ func (s *StateStore) create(ctx context.Context, returnURL, purpose, username st
 	if s.replay == nil {
 		return Flow{}, errors.New("Telegram state replay store is not configured")
 	}
+	if err = s.replay.PurgeTelegramStates(ctx, s.now()); err != nil {
+		return Flow{}, err
+	}
 	replayKey, err := s.replay.SaveOneTimeCode(ctx, model.OneTimeCode{
 		PublicID: publicID, IssuedAt: s.now(), IssuedIP: model.NewIP(net.IPv4zero), ExpiresAt: expiresAt,
 		Username: "telegram", Intent: "telegram_state", Code: replayCode,
@@ -161,7 +165,7 @@ func (s *StateStore) Inspect(state string) (Flow, error) {
 	return flow, nil
 }
 
-// Consume atomically marks and returns a valid flow as single use in this process.
+// Consume atomically consumes and returns a valid flow as single use across all instances sharing storage.
 func (s *StateStore) Consume(ctx context.Context, state string) (Flow, error) {
 	flow, err := s.Inspect(state)
 	if err != nil {

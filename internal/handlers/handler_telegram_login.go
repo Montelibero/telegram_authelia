@@ -3,7 +3,7 @@ package handlers
 import (
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
+	"encoding/base64"
 	"errors"
 	"time"
 
@@ -117,16 +117,20 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 	ctx.Redirect(returnURL, fasthttp.StatusFound)
 }
 
-func telegramStateCookieName(state string) string {
+func telegramStateCookieName(_ string) string {
+	return "authelia_telegram_state"
+}
+
+func telegramStateCookieValue(state string) string {
 	digest := sha256.Sum256([]byte(state))
-	return "authelia_telegram_state_" + hex.EncodeToString(digest[:8])
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func setTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
 	cookie := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(cookie)
 	cookie.SetKey(telegramStateCookieName(state))
-	cookie.SetValue(state)
+	cookie.SetValue(telegramStateCookieValue(state))
 	cookie.SetPath("/")
 	cookie.SetHTTPOnly(true)
 	cookie.SetSecure(true)
@@ -137,7 +141,8 @@ func setTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {
 
 func validTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) bool {
 	value := ctx.Request.Header.Cookie(telegramStateCookieName(state))
-	return len(value) == len(state) && subtle.ConstantTimeCompare(value, []byte(state)) == 1
+	expected := telegramStateCookieValue(state)
+	return len(value) == len(expected) && subtle.ConstantTimeCompare(value, []byte(expected)) == 1
 }
 
 func clearTelegramStateCookie(ctx *middlewares.AutheliaCtx, state string) {

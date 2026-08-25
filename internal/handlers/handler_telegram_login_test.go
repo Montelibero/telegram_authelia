@@ -34,6 +34,7 @@ func TestTelegramLoginHandlersCreateFederatedOneFactorSession(t *testing.T) {
 	assert.True(t, stateCookie.HTTPOnly())
 	assert.True(t, stateCookie.Secure())
 	assert.Equal(t, "/", string(stateCookie.Path()))
+	assert.Less(t, len(stateCookie.Value()), 64)
 	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
 
 	mock.Ctx.Response.Reset()
@@ -113,3 +114,5 @@ func (s *handlerStateReplayStore) ConsumeTelegramState(_ context.Context, signat
 	s.consumed[signature] = true
 	return true, nil
 }
+
+func (s *handlerStateReplayStore) PurgeTelegramStates(context.Context, time.Time) error { return nil }

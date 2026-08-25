@@ -1056,7 +1056,8 @@ func (p *SQLProvider) ConsumeOneTimeCode(ctx context.Context, code *model.OneTim
 
 // ConsumeTelegramState atomically consumes a Telegram OIDC state replay marker.
 func (p *SQLProvider) ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error) {
-	result, err := p.db.ExecContext(ctx, p.sqlConsumeOneTimeCode, sql.NullTime{Valid: true, Time: consumedAt}, model.NewNullIP(nil), signature)
+	query := p.db.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE signature = ? AND username = ? AND intent = ? AND expires >= ? AND consumed IS NULL AND revoked IS NULL`, tableOneTimeCode))
+	result, err := p.db.ExecContext(ctx, query, signature, "telegram", "telegram_state", consumedAt)
 	if err != nil {
 		return false, fmt.Errorf("error consuming Telegram state: %w", err)
 	}
@@ -1068,6 +1069,15 @@ func (p *SQLProvider) ConsumeTelegramState(ctx context.Context, signature string
 		return false, fmt.Errorf("error consuming Telegram state: multiple rows affected")
 	}
 	return rows == 1, nil
+}
+
+// PurgeTelegramStates removes expired or terminal Telegram OIDC state replay markers.
+func (p *SQLProvider) PurgeTelegramStates(ctx context.Context, before time.Time) error {
+	query := p.db.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE username = ? AND intent = ? AND (expires < ? OR consumed IS NOT NULL OR revoked IS NOT NULL)`, tableOneTimeCode))
+	if _, err := p.db.ExecContext(ctx, query, "telegram", "telegram_state", before); err != nil {
+		return fmt.Errorf("error purging Telegram states: %w", err)
+	}
+	return nil
 }
 
 // RevokeOneTimeCode revokes a one-time code in the storage provider using the public ID.

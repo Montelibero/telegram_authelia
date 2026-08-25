@@ -42,6 +42,8 @@ func (s *fakeStateReplayStore) ConsumeTelegramState(_ context.Context, signature
 	return true, nil
 }
 
+func (s *fakeStateReplayStore) PurgeTelegramStates(context.Context, time.Time) error { return nil }
+
 func TestStateStoreCreatesAndConsumesSingleUseFlow(t *testing.T) {
 	now := time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC)
 	store := NewStateStore(5*time.Minute, func() time.Time { return now }, bytes.NewReader(bytes.Repeat([]byte{0x42}, 512)), []byte("test secret"), newFakeStateReplayStore())
