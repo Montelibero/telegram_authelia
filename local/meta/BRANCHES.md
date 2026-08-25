@@ -30,9 +30,11 @@ Temporary `security/CVE-*` overlays are inserted after `local/meta` and before p
 | `feat/telegram-account-linking` | `local/auth-overlay` | Link a stable Telegram numeric ID to an existing local user | Complete |
 | `feat/telegram-login` | `local/auth-overlay` | Telegram OIDC login with Authorization Code Flow and PKCE | Complete |
 | `feat/telegram-ui` | `local/auth-overlay` | Telegram sign-in and account-linking controls in the web UI | Complete |
+| `feat/telegram-registration` | `local/auth-overlay` | Store, review, approve, and reject pending Telegram registrations | Planned |
 
 The approved product design is documented in `local/meta/telegram-auth-design.md`. The executable M0/M1 plan is in `local/meta/telegram-auth-implementation-plan.md`.
 The M0 migration and rollback procedure is documented in `local/meta/sql-user-cutover.md`.
+The approved M2 design and executable plan are documented in `local/meta/telegram-pending-registration-design.md` and `local/meta/telegram-pending-registration-implementation-plan.md`.
 
 ## Deploy order
 
