@@ -100,15 +100,17 @@ func TestStateStoreCanConsumeAcrossInstances(t *testing.T) {
 func TestStateStoreCreatesPasswordSetupAndGrantFlows(t *testing.T) {
 	store := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 1024)), []byte("test secret"), newFakeStateReplayStore())
 
-	setup, err := store.CreatePasswordSetup(context.Background(), "bublik")
+	setup, err := store.CreatePasswordSetup(context.Background(), "bublik", "session-a")
 	require.NoError(t, err)
 	assert.Equal(t, "password_setup", setup.Purpose)
 	assert.Equal(t, "bublik", setup.Username)
+	assert.Equal(t, "session-a", setup.SessionBinding)
 
-	grant, err := store.CreatePasswordGrant(context.Background(), "bublik")
+	grant, err := store.CreatePasswordGrant(context.Background(), "bublik", "session-a")
 	require.NoError(t, err)
 	assert.Equal(t, "password_grant", grant.Purpose)
 	assert.Equal(t, "bublik", grant.Username)
+	assert.Equal(t, "session-a", grant.SessionBinding)
 }
 
 func TestStateStoreRejectsTokenEncryptedWithAnotherKey(t *testing.T) {

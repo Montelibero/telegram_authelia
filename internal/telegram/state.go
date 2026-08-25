@@ -27,14 +27,15 @@ var (
 
 // Flow binds an OIDC request to its state, nonce, PKCE verifier, and return URL.
 type Flow struct {
-	State        string `json:"-"`
-	Nonce        string
-	CodeVerifier string
-	ReturnURL    string
-	Purpose      string
-	Username     string
-	ReplayKey    string
-	ExpiresAt    time.Time
+	State          string `json:"-"`
+	Nonce          string
+	CodeVerifier   string
+	ReturnURL      string
+	Purpose        string
+	Username       string
+	SessionBinding string
+	ReplayKey      string
+	ExpiresAt      time.Time
 }
 
 // StateReplayStore persists and atomically consumes state replay markers.
@@ -87,16 +88,20 @@ func (s *StateStore) CreateLink(ctx context.Context, username string) (Flow, err
 }
 
 // CreatePasswordSetup creates a fresh Telegram verification flow for password setup.
-func (s *StateStore) CreatePasswordSetup(ctx context.Context, username string) (Flow, error) {
-	return s.create(ctx, "", "password_setup", username)
+func (s *StateStore) CreatePasswordSetup(ctx context.Context, username, sessionBinding string) (Flow, error) {
+	return s.createBound(ctx, "", "password_setup", username, sessionBinding)
 }
 
 // CreatePasswordGrant creates a single-use grant after Telegram verification succeeds.
-func (s *StateStore) CreatePasswordGrant(ctx context.Context, username string) (Flow, error) {
-	return s.create(ctx, "", "password_grant", username)
+func (s *StateStore) CreatePasswordGrant(ctx context.Context, username, sessionBinding string) (Flow, error) {
+	return s.createBound(ctx, "", "password_grant", username, sessionBinding)
 }
 
 func (s *StateStore) create(ctx context.Context, returnURL, purpose, username string) (Flow, error) {
+	return s.createBound(ctx, returnURL, purpose, username, "")
+}
+
+func (s *StateStore) createBound(ctx context.Context, returnURL, purpose, username, sessionBinding string) (Flow, error) {
 	nonce, err := s.randomValue()
 	if err != nil {
 		return Flow{}, err
@@ -131,13 +136,14 @@ func (s *StateStore) create(ctx context.Context, returnURL, purpose, username st
 	}
 
 	flow := Flow{
-		Nonce:        nonce,
-		CodeVerifier: verifier,
-		ReturnURL:    returnURL,
-		Purpose:      purpose,
-		Username:     username,
-		ReplayKey:    replayKey,
-		ExpiresAt:    expiresAt,
+		Nonce:          nonce,
+		CodeVerifier:   verifier,
+		ReturnURL:      returnURL,
+		Purpose:        purpose,
+		Username:       username,
+		SessionBinding: sessionBinding,
+		ReplayKey:      replayKey,
+		ExpiresAt:      expiresAt,
 	}
 
 	payload, err := json.Marshal(flow)

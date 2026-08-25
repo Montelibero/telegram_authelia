@@ -69,6 +69,14 @@ const SettingsView = function () {
     );
     const [disablePasswordOpen, setDisablePasswordOpen] = useState(false);
 
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("telegram_password_setup")) {
+            url.searchParams.delete("telegram_password_setup");
+            window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+        }
+    }, []);
+
     const refreshProfile = useCallback(() => {
         getSelfServiceProfile()
             .then(setProfile)

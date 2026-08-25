@@ -112,6 +112,7 @@ func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 type testSQLUserStore struct {
 	users            map[string]model.MTLUserDetails
 	reconciledGroups []string
+	loadCount        int
 }
 
 func (s *testSQLUserStore) RemoveMTLSelfServicePassword(_ context.Context, username string, expectedVersion int, actor string) (model.MTLAdminUserDetails, error) {
@@ -136,8 +137,20 @@ func (s *testSQLUserStore) MigrateMTL(context.Context) error {
 }
 
 func (s *testSQLUserStore) LoadMTLUser(_ context.Context, username string) (model.MTLUserDetails, bool, error) {
+	s.loadCount++
 	details, found := s.users[username]
 	return details, found, nil
+}
+
+func TestSQLUserProviderChangePasswordUsesVerifiedVersion(t *testing.T) {
+	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
+		"active": {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4}},
+	}}
+	provider := NewSQLUserProvider(&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig}, store, nil)
+	require.NoError(t, provider.StartupCheck())
+
+	require.NoError(t, provider.ChangePassword("active", "old-password", "new-password"))
+	assert.Equal(t, 1, store.loadCount, "password verification and update must use the same loaded version")
 }
 
 func (s *testSQLUserStore) FindMTLUserByEmail(_ context.Context, email string) (string, bool, error) {

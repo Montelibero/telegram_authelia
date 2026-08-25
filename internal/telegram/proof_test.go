@@ -20,16 +20,20 @@ func TestPasswordProofServiceRequiresExactLinkedIdentityAndSingleUseGrant(t *tes
 		&fakePasswordProofStore{identity: model.MTLUserIdentity{ProviderUserID: "42"}},
 	)
 
-	_, state, err := service.Begin(context.Background(), "bublik")
+	_, state, err := service.Begin(context.Background(), "bublik", "session-a")
 	require.NoError(t, err)
-	grant, err := service.Complete(context.Background(), "bublik", state, "code")
-	require.NoError(t, err)
-	require.NoError(t, service.Consume(context.Background(), "bublik", grant))
-	assert.ErrorIs(t, service.Consume(context.Background(), "bublik", grant), ErrInvalidState)
+	_, err = service.Complete(context.Background(), "bublik", "session-b", state, "code")
+	assert.ErrorIs(t, err, ErrPasswordProofSessionMismatch)
 
-	_, state, err = service.Begin(context.Background(), "bublik")
+	grant, err := service.Complete(context.Background(), "bublik", "session-a", state, "code")
 	require.NoError(t, err)
-	_, err = service.Complete(context.Background(), "other", state, "code")
+	assert.ErrorIs(t, service.Validate("bublik", "session-b", grant), ErrPasswordProofSessionMismatch)
+	require.NoError(t, service.Consume(context.Background(), "bublik", "session-a", grant))
+	assert.ErrorIs(t, service.Consume(context.Background(), "bublik", "session-a", grant), ErrInvalidState)
+
+	_, state, err = service.Begin(context.Background(), "bublik", "session-a")
+	require.NoError(t, err)
+	_, err = service.Complete(context.Background(), "other", "session-a", state, "code")
 	assert.ErrorIs(t, err, ErrPasswordProofUserMismatch)
 }
 
@@ -40,9 +44,9 @@ func TestPasswordProofServiceRejectsDifferentTelegramIdentity(t *testing.T) {
 		states,
 		&fakePasswordProofStore{identity: model.MTLUserIdentity{ProviderUserID: "42"}},
 	)
-	_, state, err := service.Begin(context.Background(), "bublik")
+	_, state, err := service.Begin(context.Background(), "bublik", "session-a")
 	require.NoError(t, err)
-	_, err = service.Complete(context.Background(), "bublik", state, "code")
+	_, err = service.Complete(context.Background(), "bublik", "session-a", state, "code")
 	assert.ErrorIs(t, err, ErrPasswordProofIdentityMismatch)
 }
 

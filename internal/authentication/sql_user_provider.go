@@ -2,7 +2,6 @@ package authentication
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -135,12 +134,19 @@ func (p *SQLUserProvider) ChangePassword(username, oldPassword, newPassword stri
 		return ErrPasswordWeak
 	}
 
-	valid, err := p.CheckUserPassword(username, oldPassword)
+	stored, err := p.loadActiveUser(username)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return ErrUserNotFound
-		}
-
+		return err
+	}
+	if !stored.User.PasswordHash.Valid {
+		return ErrUserNotFound
+	}
+	digest, err := schema.DecodePasswordDigest(stored.User.PasswordHash.String)
+	if err != nil {
+		return ErrAuthenticationFailed
+	}
+	valid, err := digest.MatchAdvanced(oldPassword)
+	if err != nil {
 		return ErrAuthenticationFailed
 	}
 
@@ -148,10 +154,6 @@ func (p *SQLUserProvider) ChangePassword(username, oldPassword, newPassword stri
 		return ErrIncorrectPassword
 	}
 
-	stored, err := p.loadActiveUser(username)
-	if err != nil {
-		return err
-	}
 	encoded, err := p.hashPassword(newPassword)
 	if err != nil {
 		return err
