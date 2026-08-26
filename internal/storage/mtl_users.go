@@ -90,6 +90,58 @@ func (p *SQLProvider) LoadMTLUserByIdentity(ctx context.Context, provider, provi
 	return p.LoadMTLUser(ctx, username)
 }
 
+// SyncMTLTelegramIdentityProfile stores the current Telegram username and its generated login email.
+func (p *SQLProvider) SyncMTLTelegramIdentityProfile(ctx context.Context, providerUserID, providerUsername, generatedEmailDomain string) (err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin MTL Telegram identity profile sync: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+
+	var userID int64
+	if err = tx.GetContext(ctx, &userID, tx.Rebind(`SELECT user_id FROM mtl_user_identities WHERE provider = 'telegram' AND TRIM(provider_user_id) = ?`), strings.TrimSpace(providerUserID)); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrMTLIdentityNotFound
+		}
+		return fmt.Errorf("failed to load MTL Telegram identity profile: %w", err)
+	}
+	if err = syncMTLTelegramIdentityProfile(ctx, tx, userID, providerUsername, generatedEmailDomain); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit MTL Telegram identity profile sync: %w", err)
+	}
+	return nil
+}
+
+func syncMTLTelegramIdentityProfile(ctx context.Context, tx SQLXTx, userID int64, providerUsername, generatedEmailDomain string) error {
+	username := strings.TrimPrefix(strings.TrimSpace(providerUsername), "@")
+	var storedUsername any
+	if username != "" {
+		storedUsername = username
+	}
+	if _, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_user_identities SET provider_username = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND provider = 'telegram'`), storedUsername, userID); err != nil {
+		return fmt.Errorf("failed to update MTL Telegram identity profile: %w", err)
+	}
+
+	domain := strings.TrimPrefix(strings.TrimSpace(generatedEmailDomain), "@")
+	if username == "" || domain == "" {
+		return nil
+	}
+	email := strings.ToLower(username + "@" + domain)
+	var exists int
+	if err := tx.GetContext(ctx, &exists, tx.Rebind(`SELECT COUNT(*) FROM mtl_user_emails WHERE email = ?`), email); err != nil {
+		return fmt.Errorf("failed to check MTL Telegram identity email: %w", err)
+	}
+	if exists != 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_emails (user_id, email, is_primary, verified) VALUES (?, ?, 0, 1)`), userID, email); err != nil {
+		return mapMTLConflict("failed to add MTL Telegram identity email", err)
+	}
+	return nil
+}
+
 // UnlinkMTLUserIdentity removes a provider identity from the exact local username.
 func (p *SQLProvider) UnlinkMTLUserIdentity(ctx context.Context, username, provider string) (err error) {
 	tx, err := p.db.BeginTxx(ctx, nil)
