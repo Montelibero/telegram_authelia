@@ -23,6 +23,7 @@ vi.mock("@contexts/NotificationsContext", () => ({
 
 const mockConfig = {
     available_methods: new Set([SecondFactorMethod.TOTP, SecondFactorMethod.WebAuthn]),
+    passkey_login_enabled: true,
 };
 
 const mockUserInfo = {
@@ -69,4 +70,14 @@ it("renders OTP panel, WebAuthn panel, and options panel", () => {
     expect(screen.getByTestId("otp-panel")).toBeInTheDocument();
     expect(screen.getByTestId("webauthn-panel")).toBeInTheDocument();
     expect(screen.getByTestId("options-panel")).toBeInTheDocument();
+});
+
+it("renders the WebAuthn panel for passkey login without any two-factor methods", () => {
+    mockConfig.available_methods = new Set();
+    mockConfig.passkey_login_enabled = true;
+
+    render(<TwoFactorAuthenticationView />);
+
+    expect(screen.getByTestId("webauthn-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("otp-panel")).not.toBeInTheDocument();
 });

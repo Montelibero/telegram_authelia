@@ -212,6 +212,7 @@ it("OneFactor with no 2FA methods navigates to /authenticated", async () => {
 });
 
 it("OneFactor with TOTP preferred navigates to /2fa/totp", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -244,6 +245,7 @@ it("OneFactor with TOTP preferred navigates to /2fa/totp", async () => {
 });
 
 it("OneFactor with WebAuthn preferred navigates to /2fa/webauthn", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -276,6 +278,7 @@ it("OneFactor with WebAuthn preferred navigates to /2fa/webauthn", async () => {
 });
 
 it("OneFactor with MobilePush preferred navigates to /2fa/push", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -339,6 +342,38 @@ it("OneFactor with factor_knowledge false and no target navigates to /authentica
     expect(mockNavigate).toHaveBeenNthCalledWith(1, "/authenticated", false);
 });
 
+it("OneFactor with factor_knowledge true and no target navigates to /authenticated", async () => {
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: true, username: "test" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useConfiguration).mockReturnValue([
+        { available_methods: new Set([2]), password_change_disabled: false, password_reset_disabled: false },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useUserInfoPOST).mockReturnValue([
+        { display_name: "test", emails: [], has_duo: false, has_totp: false, has_webauthn: true, method: 2 },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+
+    render(
+        <MemoryRouter>
+            <LoginPortal {...defaultProps} />
+        </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockNavigate).toHaveBeenNthCalledWith(1, "/authenticated", false);
+});
+
 it("OneFactor with factor_knowledge false and a protected target navigates to /2fa/password", async () => {
     vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
@@ -373,6 +408,7 @@ it("OneFactor with factor_knowledge false and a protected target navigates to /2
 });
 
 it("localStorageMethod overrides userInfo.method", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),

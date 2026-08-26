@@ -27,6 +27,14 @@ type MTLAdminUserCreate struct {
 	DisplayName string   `json:"display_name"`
 	Email       string   `json:"email"`
 	Groups      []string `json:"groups"`
+	TelegramID  string   `json:"telegram_id"`
+}
+
+// MTLAdminIdentityLink contains an identity directly assigned by an administrator.
+type MTLAdminIdentityLink struct {
+	ExpectedVersion int    `json:"expected_version"`
+	Provider        string `json:"provider"`
+	ProviderUserID  string `json:"provider_user_id"`
 }
 
 // MTLAdminUserUpdate contains optimistic user profile changes.

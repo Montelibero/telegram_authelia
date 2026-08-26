@@ -9,12 +9,12 @@ import {
     getAdminGroup,
     getAdminUser,
     getAdminUsers,
+    linkAdminUserTelegram,
     removeAdminGroupUser,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
 } from "@services/Admin";
-import { postFirstFactorReauthenticate } from "@services/Password";
 import UsersView from "@views/Settings/Admin/UsersView";
 
 const notifyError = vi.fn();
@@ -34,12 +34,12 @@ vi.mock("@services/Admin", () => ({
     getAdminGroup: vi.fn(),
     getAdminUser: vi.fn(),
     getAdminUsers: vi.fn(),
+    linkAdminUserTelegram: vi.fn(),
     removeAdminGroupUser: vi.fn(),
     setAdminUserPrimaryEmail: vi.fn(),
     unlinkAdminUserIdentity: vi.fn(),
     updateAdminUser: vi.fn(),
 }));
-vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
 
 const summary = {
     display_name: "Alice",
@@ -123,17 +123,6 @@ it("filters users locally by username, display name, and email", async () => {
     expect(screen.getByText(/builder@example.com/)).toBeInTheDocument();
 });
 
-it("reauthenticates with a password without replacing the current login", async () => {
-    vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
-    render(<UsersView currentUsername="admin" />);
-
-    fireEvent.change(screen.getByLabelText("Administrator password"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock changes" }));
-
-    await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
-    expect(notifySuccess).toHaveBeenCalledWith("Administrator actions unlocked");
-});
-
 it("creates a user", async () => {
     vi.mocked(createAdminUser).mockResolvedValue(details);
     render(<UsersView currentUsername="admin" />);
@@ -142,6 +131,7 @@ it("creates a user", async () => {
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
+    fireEvent.change(screen.getByLabelText("Telegram ID"), { target: { value: "987654321" } });
     fireEvent.change(screen.getByLabelText("New group"), { target: { value: "users" } });
     fireEvent.click(screen.getByRole("button", { name: "Add group" }));
     fireEvent.change(screen.getByLabelText("New group"), { target: { value: "app:grafana" } });
@@ -153,9 +143,27 @@ it("creates a user", async () => {
             display_name: "Alice",
             email: "alice@example.com",
             groups: ["users", "app:grafana"],
+            telegram_id: "987654321",
             username: "alice",
         }),
     );
+});
+
+it("links a Telegram ID to an existing user", async () => {
+    const withoutIdentity = { ...details, identities: [] };
+    vi.mocked(getAdminUser).mockResolvedValue(withoutIdentity);
+    vi.mocked(linkAdminUserTelegram).mockResolvedValue({
+        ...withoutIdentity,
+        identities: [{ ...details.identities[0], provider_user_id: "987654321" }],
+        version: 2,
+    });
+    render(<UsersView currentUsername="admin" />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
+
+    fireEvent.change(await screen.findByLabelText("Telegram ID"), { target: { value: "987654321" } });
+    fireEvent.click(screen.getByRole("button", { name: "Link Telegram" }));
+
+    await waitFor(() => expect(linkAdminUserTelegram).toHaveBeenCalledWith("alice", "987654321", 1));
 });
 
 it("updates a user and generates a copyable setup link", async () => {

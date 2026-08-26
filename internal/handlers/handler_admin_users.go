@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -23,6 +25,7 @@ type adminUserStore interface {
 	AddMTLAdminUserEmail(context.Context, string, model.MTLAdminEmailCreate, string) (model.MTLAdminUserDetails, error)
 	SetMTLAdminPrimaryEmail(context.Context, string, string, int, string) (model.MTLAdminUserDetails, error)
 	DeleteMTLAdminUserEmail(context.Context, string, string, int, string) (model.MTLAdminUserDetails, error)
+	LinkMTLAdminUserIdentity(context.Context, string, model.MTLAdminIdentityLink, string) (model.MTLAdminUserDetails, error)
 	UnlinkMTLAdminUserIdentity(context.Context, string, string, int, string) (model.MTLAdminUserDetails, error)
 }
 
@@ -46,6 +49,7 @@ type adminUserIdentityRequest struct {
 	Provider        string `json:"provider"`
 	ExpectedVersion int    `json:"expected_version"`
 	ConfirmUsername string `json:"confirm_username"`
+	ProviderUserID  string `json:"provider_user_id"`
 }
 
 type adminUserSetupLinkRequest struct {
@@ -86,6 +90,10 @@ func AdminUserPOST(ctx *middlewares.AutheliaCtx) {
 	if !adminAPIParse(ctx, &request) {
 		return
 	}
+	if request.TelegramID != "" && !validTelegramUserID(request.TelegramID) {
+		ctx.ReplyBadRequest()
+		return
+	}
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
@@ -93,6 +101,11 @@ func AdminUserPOST(ctx *middlewares.AutheliaCtx) {
 	}
 	details, err := store.CreateMTLAdminUser(ctx, request, adminAPIActor(ctx))
 	adminAPIRespond(ctx, details, fasthttp.StatusCreated, err)
+}
+
+func validTelegramUserID(value string) bool {
+	id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+	return err == nil && id > 0
 }
 
 func AdminUserPATCH(ctx *middlewares.AutheliaCtx) {
@@ -190,6 +203,28 @@ func AdminUserIdentityDELETE(ctx *middlewares.AutheliaCtx) {
 		}
 	}
 	details, err := store.UnlinkMTLAdminUserIdentity(ctx, request.Username, request.Provider, request.ExpectedVersion, actor)
+	adminAPIRespond(ctx, details, fasthttp.StatusOK, err)
+}
+
+func AdminUserIdentityPUT(ctx *middlewares.AutheliaCtx) {
+	var request adminUserIdentityRequest
+	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	if request.Provider != "telegram" || !validTelegramUserID(request.ProviderUserID) {
+		ctx.ReplyBadRequest()
+		return
+	}
+	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
+	if !ok {
+		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	details, err := store.LinkMTLAdminUserIdentity(ctx, request.Username, model.MTLAdminIdentityLink{
+		ExpectedVersion: request.ExpectedVersion,
+		Provider:        request.Provider,
+		ProviderUserID:  request.ProviderUserID,
+	}, adminAPIActor(ctx))
 	adminAPIRespond(ctx, details, fasthttp.StatusOK, err)
 }
 

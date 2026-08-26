@@ -28,32 +28,14 @@ func RequireAdmin(next RequestHandler) RequestHandler {
 	}
 }
 
-// RequireAdminMutation additionally requires a same-origin request and fresh password proof in the same session.
+// RequireAdminMutation additionally requires a same-origin request and an elevated session.
 func RequireAdminMutation(next RequestHandler) RequestHandler {
-	return RequireAdmin(requireAdminSameOrigin(requireAdminFreshPassword(next)))
+	return RequireAdmin(requireAdminSameOrigin(RequireElevated(next)))
 }
 
 // RequireSameOriginMutation rejects state-changing requests not originating from this Authelia endpoint.
 func RequireSameOriginMutation(next RequestHandler) RequestHandler {
 	return requireAdminSameOrigin(next)
-}
-
-func requireAdminFreshPassword(next RequestHandler) RequestHandler {
-	return func(ctx *AutheliaCtx) {
-		userSession, err := ctx.GetSession()
-		if err != nil || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
-			ctx.ReplyForbidden()
-			return
-		}
-		now := ctx.GetClock().Now()
-		lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
-		passwordProof := userSession.GetFirstFactorAuthn()
-		if lifespan <= 0 || passwordProof.IsZero() || passwordProof.After(now) || now.Sub(passwordProof) > lifespan {
-			ctx.ReplyForbidden()
-			return
-		}
-		next(ctx)
-	}
 }
 
 func requireAdminSameOrigin(next RequestHandler) RequestHandler {

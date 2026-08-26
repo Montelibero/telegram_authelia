@@ -38,12 +38,12 @@ import {
     getAdminGroup,
     getAdminUser,
     getAdminUsers,
+    linkAdminUserTelegram,
     removeAdminGroupUser,
     setAdminUserPrimaryEmail,
     unlinkAdminUserIdentity,
     updateAdminUser,
 } from "@services/Admin";
-import { postFirstFactorReauthenticate } from "@services/Password";
 
 interface UsersViewProps {
     currentUsername: string;
@@ -56,7 +56,6 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     const [selected, setSelected] = useState<AdminUserDetails>();
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
-    const [password, setPassword] = useState("");
     const [filter, setFilter] = useState("");
 
     const loadUsers = useCallback(async () => {
@@ -83,16 +82,6 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
         },
         [createErrorNotification, translate],
     );
-
-    const unlock = useCallback(async () => {
-        try {
-            await postFirstFactorReauthenticate(password);
-            setPassword("");
-            createSuccessNotification(translate("Administrator actions unlocked"));
-        } catch {
-            createErrorNotification(translate("Incorrect password or reauthentication failed"));
-        }
-    }, [createErrorNotification, createSuccessNotification, password, translate]);
 
     const applyDetails = useCallback(
         async (operation: () => Promise<AdminUserDetails>) => {
@@ -132,22 +121,8 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     return (
         <Stack spacing={2}>
             <Typography variant="h4">{translate("Users")}</Typography>
-            <Alert severity="info">
-                {translate(
-                    "User changes require a recent password check. Telegram login remains active after reauthentication.",
-                )}
-            </Alert>
+            <Alert severity="info">{translate("User changes require a recent successful sign-in.")}</Alert>
             <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                <TextField
-                    label={translate("Administrator password")}
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    size="small"
-                />
-                <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
-                    {translate("Unlock changes")}
-                </Button>
                 <Button variant="contained" onClick={() => setCreateOpen(true)}>
                     {translate("Create user")}
                 </Button>
@@ -216,6 +191,7 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
     const [newEmail, setNewEmail] = useState("");
     const [newEmailPrimary, setNewEmailPrimary] = useState(false);
     const [newGroup, setNewGroup] = useState("");
+    const [telegramID, setTelegramID] = useState("");
     const [setupLink, setSetupLink] = useState("");
     const [setupExpires, setSetupExpires] = useState("");
     const confirmed = confirmation === currentUsername;
@@ -394,7 +370,7 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
                     {details.identities.map((identity) => (
                         <Stack direction="row" spacing={1} alignItems="center" key={identity.provider}>
                             <Typography sx={{ flexGrow: 1 }}>
-                                {identity.provider}: {identity.provider_username ?? identity.provider_user_id}
+                                {identity.provider}: {identity.provider_username || identity.provider_user_id}
                             </Typography>
                             <Button
                                 aria-label={"Unlink " + identity.provider}
@@ -415,6 +391,27 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
                             </Button>
                         </Stack>
                     ))}
+                    {!details.identities.some((identity) => identity.provider === "telegram") ? (
+                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                            <TextField
+                                fullWidth
+                                label={translate("Telegram ID")}
+                                value={telegramID}
+                                slotProps={{ htmlInput: { inputMode: "numeric" } }}
+                                onChange={(event) => setTelegramID(event.target.value)}
+                            />
+                            <Button
+                                disabled={!telegramID.trim()}
+                                onClick={() =>
+                                    applyDetails(() =>
+                                        linkAdminUserTelegram(details.username, telegramID, details.version),
+                                    ).catch(console.error)
+                                }
+                            >
+                                {translate("Link Telegram")}
+                            </Button>
+                        </Stack>
+                    ) : null}
                     <Divider />
                     <Button variant="outlined" onClick={() => generateLink().catch(console.error)}>
                         {translate("Generate setup link")}
@@ -447,14 +444,20 @@ interface CreateUserDialogProps {
 const CreateUserDialog = function ({ close, created, open }: CreateUserDialogProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification } = useNotifications();
-    const [form, setForm] = useState<AdminUserCreate>({ display_name: "", email: "", groups: [], username: "" });
+    const [form, setForm] = useState<AdminUserCreate>({
+        display_name: "",
+        email: "",
+        groups: [],
+        telegram_id: "",
+        username: "",
+    });
     const [group, setGroup] = useState("");
     const [groups, setGroups] = useState<string[]>([]);
 
     const submit = useCallback(async () => {
         try {
             await created(await createAdminUser({ ...form, groups }));
-            setForm({ display_name: "", email: "", groups: [], username: "" });
+            setForm({ display_name: "", email: "", groups: [], telegram_id: "", username: "" });
             setGroup("");
             setGroups([]);
         } catch {
@@ -481,6 +484,12 @@ const CreateUserDialog = function ({ close, created, open }: CreateUserDialogPro
                         label={translate("Email")}
                         value={form.email}
                         onChange={(event) => setForm({ ...form, email: event.target.value })}
+                    />
+                    <TextField
+                        label={translate("Telegram ID")}
+                        value={form.telegram_id}
+                        slotProps={{ htmlInput: { inputMode: "numeric" } }}
+                        onChange={(event) => setForm({ ...form, telegram_id: event.target.value })}
                     />
                     <Stack direction="row" spacing={1}>
                         <TextField

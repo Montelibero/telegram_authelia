@@ -95,6 +95,11 @@ func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAd
 	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_emails (user_id, email, is_primary, verified) VALUES (?, ?, 1, 1)`), userID, strings.TrimSpace(create.Email)); err != nil {
 		return details, mapMTLConflict("failed to create MTL admin user email", err)
 	}
+	if telegramID := strings.TrimSpace(create.TelegramID); telegramID != "" {
+		if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, 'telegram', ?, '')`), userID, telegramID); err != nil {
+			return details, mapMTLConflict("failed to link MTL admin user Telegram identity", err)
+		}
+	}
 	groups := append([]string(nil), create.Groups...)
 	sort.Strings(groups)
 	for _, group := range groups {
@@ -113,6 +118,37 @@ func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAd
 		return details, fmt.Errorf("failed to commit MTL admin user creation: %w", err)
 	}
 	details, _, err = p.LoadMTLAdminUser(ctx, create.Username)
+	return details, err
+}
+
+// LinkMTLAdminUserIdentity assigns a stable provider identity with optimistic concurrency.
+func (p *SQLProvider) LinkMTLAdminUserIdentity(ctx context.Context, username string, link model.MTLAdminIdentityLink, actor string) (details model.MTLAdminUserDetails, err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return details, fmt.Errorf("failed to begin MTL admin identity link: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+	userID, err := loadMTLAdminUserVersion(ctx, tx, username, link.ExpectedVersion)
+	if err != nil {
+		return details, err
+	}
+	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
+	if err != nil {
+		return details, err
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, ?, ?, '')`), userID, link.Provider, strings.TrimSpace(link.ProviderUserID)); err != nil {
+		return details, mapMTLConflict("failed to link MTL admin identity", err)
+	}
+	if err = bumpMTLAdminUserVersion(ctx, tx, userID, link.ExpectedVersion, true); err != nil {
+		return details, err
+	}
+	if err = auditMTLAdmin(ctx, tx, actorID, "identity.linked", "user", username); err != nil {
+		return details, err
+	}
+	if err = tx.Commit(); err != nil {
+		return details, fmt.Errorf("failed to commit MTL admin identity link: %w", err)
+	}
+	details, _, err = p.LoadMTLAdminUser(ctx, username)
 	return details, err
 }
 

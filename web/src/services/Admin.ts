@@ -80,6 +80,7 @@ export interface AdminUserCreate {
     display_name: string;
     email: string;
     groups: string[];
+    telegram_id?: string;
 }
 
 export interface AdminUserSetupLink {
@@ -211,6 +212,19 @@ export function unlinkAdminUserIdentity(
     return adminRequest<AdminUserDetails>({
         data: { confirm_username: confirmUsername, expected_version: expectedVersion, provider, username },
         method: "DELETE",
+        url: AdminUserIdentityPath,
+    });
+}
+
+export function linkAdminUserTelegram(username: string, telegramID: string, expectedVersion: number) {
+    return adminRequest<AdminUserDetails>({
+        data: {
+            expected_version: expectedVersion,
+            provider: "telegram",
+            provider_user_id: telegramID,
+            username,
+        },
+        method: "PUT",
         url: AdminUserIdentityPath,
     });
 }
