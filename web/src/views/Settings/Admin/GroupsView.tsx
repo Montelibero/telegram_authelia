@@ -29,7 +29,7 @@ import {
     removeAdminGroupUser,
     renameAdminGroup,
 } from "@services/Admin";
-import { postFirstFactorReauthenticate } from "@services/Password";
+import { isAdminMutationAuthenticationError, useAdminMutationLock } from "@views/Settings/Admin/useAdminMutationLock";
 
 interface GroupsViewProps {
     currentUsername: string;
@@ -41,8 +41,8 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
     const [groups, setGroups] = useState<Awaited<ReturnType<typeof getAdminGroups>>>([]);
     const [selected, setSelected] = useState<AdminGroupDetails>();
     const [newGroupName, setNewGroupName] = useState("");
-    const [password, setPassword] = useState("");
     const [warning, setWarning] = useState<{ affectedUsers: string[]; message: string }>();
+    const mutationLock = useAdminMutationLock();
 
     const loadGroups = useCallback(async () => {
         try {
@@ -68,26 +68,17 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
         [createErrorNotification, translate],
     );
 
-    const unlock = useCallback(async () => {
-        try {
-            await postFirstFactorReauthenticate(password);
-            setPassword("");
-            createSuccessNotification(translate("Administrator actions unlocked"));
-        } catch {
-            createErrorNotification(translate("Incorrect password or reauthentication failed"));
-        }
-    }, [createErrorNotification, createSuccessNotification, password, translate]);
-
     const create = useCallback(async () => {
         try {
             setSelected(await createAdminGroup(newGroupName));
             setNewGroupName("");
             await loadGroups();
             createSuccessNotification(translate("Group created"));
-        } catch {
+        } catch (error) {
+            if (isAdminMutationAuthenticationError(error)) mutationLock.lock();
             createErrorNotification(translate("Group creation failed; reauthenticate and try again"));
         }
-    }, [createErrorNotification, createSuccessNotification, loadGroups, newGroupName, translate]);
+    }, [createErrorNotification, createSuccessNotification, loadGroups, mutationLock, newGroupName, translate]);
 
     const applyGroup = useCallback(
         async (operation: () => Promise<AdminGroupDetails | AdminGroupWarning>) => {
@@ -111,6 +102,11 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
                 await loadGroups();
                 createSuccessNotification(translate("Group updated"));
             } catch (error) {
+                if (isAdminMutationAuthenticationError(error)) {
+                    mutationLock.lock();
+                    createErrorNotification(translate("Reauthenticate to make administrator changes"));
+                    return;
+                }
                 if ((error as { response?: { status?: number } }).response?.status === 409 && selectedName) {
                     try {
                         setSelected(await getAdminGroup(selectedName));
@@ -126,13 +122,13 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
                 createErrorNotification(translate("Group update failed; reauthenticate or reload and try again"));
             }
         },
-        [createErrorNotification, createSuccessNotification, loadGroups, selected?.name, translate],
+        [createErrorNotification, createSuccessNotification, loadGroups, mutationLock, selected?.name, translate],
     );
 
     return (
         <Stack spacing={2}>
             <Typography variant="h4">{translate("Groups")}</Typography>
-            <Alert severity="info">{translate("Group changes require a recent administrator password check.")}</Alert>
+            {mutationLock.controls}
             {warning ? (
                 <Alert severity="warning">
                     {warning.message}. {translate("Affected users")}:{" "}
@@ -141,22 +137,17 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
             ) : null}
             <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
                 <TextField
-                    label={translate("Administrator password")}
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    size="small"
-                />
-                <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
-                    {translate("Unlock changes")}
-                </Button>
-                <TextField
+                    disabled={!mutationLock.unlocked}
                     label={translate("New group name")}
                     value={newGroupName}
                     onChange={(event) => setNewGroupName(event.target.value)}
                     size="small"
                 />
-                <Button variant="contained" disabled={!newGroupName} onClick={() => create().catch(console.error)}>
+                <Button
+                    variant="contained"
+                    disabled={!mutationLock.unlocked || !newGroupName}
+                    onClick={() => create().catch(console.error)}
+                >
                     {translate("Create group")}
                 </Button>
             </Stack>
@@ -183,6 +174,7 @@ const GroupsView = function ({ currentUsername }: GroupsViewProps) {
                         currentUsername={currentUsername}
                         details={selected}
                         applyGroup={applyGroup}
+                        mutationsUnlocked={mutationLock.unlocked}
                     />
                 ) : null}
             </Box>
@@ -194,9 +186,10 @@ interface GroupDetailsProps {
     applyGroup: (_operation: () => Promise<AdminGroupDetails | AdminGroupWarning>) => Promise<void>;
     currentUsername: string;
     details: AdminGroupDetails;
+    mutationsUnlocked: boolean;
 }
 
-const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDetailsProps) {
+const GroupDetails = function ({ applyGroup, currentUsername, details, mutationsUnlocked }: GroupDetailsProps) {
     const { t: translate } = useTranslation("settings");
     const [name, setName] = useState(details.name);
     const [confirmation, setConfirmation] = useState("");
@@ -207,104 +200,106 @@ const GroupDetails = function ({ applyGroup, currentUsername, details }: GroupDe
     return (
         <Card variant="outlined">
             <CardContent>
-                <Stack spacing={2}>
-                    {details.managed ? <Chip label={translate("Managed application group")} /> : null}
-                    <TextField
-                        disabled={details.managed}
-                        label={translate("Group name")}
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                    />
-                    <TextField
-                        label={translate("Confirmation username")}
-                        value={confirmation}
-                        helperText={translate("Required for changes that can remove your own access")}
-                        onChange={(event) => setConfirmation(event.target.value)}
-                    />
-                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                        <Button
-                            variant="contained"
-                            disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
-                            onClick={() =>
-                                applyGroup(() =>
-                                    renameAdminGroup(
-                                        details.name,
-                                        name,
-                                        details.version,
-                                        affectsCurrentAdministrator ? confirmation : "",
-                                    ),
-                                ).catch(console.error)
-                            }
-                        >
-                            {translate("Rename group")}
-                        </Button>
-                        <Button
-                            color="error"
-                            variant="outlined"
-                            disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
-                            onClick={() =>
-                                applyGroup(() =>
-                                    deleteAdminGroup(
-                                        details.name,
-                                        details.version,
-                                        affectsCurrentAdministrator ? confirmation : "",
-                                    ),
-                                ).catch(console.error)
-                            }
-                        >
-                            {translate("Delete group")}
-                        </Button>
-                    </Stack>
-                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                <fieldset disabled={!mutationsUnlocked} style={{ border: 0, margin: 0, padding: 0 }}>
+                    <Stack spacing={2}>
+                        {details.managed ? <Chip label={translate("Managed application group")} /> : null}
                         <TextField
-                            label={translate("Username to add")}
-                            value={usernameToAdd}
-                            onChange={(event) => setUsernameToAdd(event.target.value)}
-                            fullWidth
+                            disabled={details.managed}
+                            label={translate("Group name")}
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
                         />
-                        <Button
-                            disabled={!usernameToAdd}
-                            onClick={() =>
-                                applyGroup(() => addAdminGroupUser(details.name, usernameToAdd, details.version)).catch(
-                                    console.error,
-                                )
-                            }
-                        >
-                            {translate("Add member")}
-                        </Button>
+                        <TextField
+                            label={translate("Confirmation username")}
+                            value={confirmation}
+                            helperText={translate("Required for changes that can remove your own access")}
+                            onChange={(event) => setConfirmation(event.target.value)}
+                        />
+                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                            <Button
+                                variant="contained"
+                                disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
+                                onClick={() =>
+                                    applyGroup(() =>
+                                        renameAdminGroup(
+                                            details.name,
+                                            name,
+                                            details.version,
+                                            affectsCurrentAdministrator ? confirmation : "",
+                                        ),
+                                    ).catch(console.error)
+                                }
+                            >
+                                {translate("Rename group")}
+                            </Button>
+                            <Button
+                                color="error"
+                                variant="outlined"
+                                disabled={details.managed || (affectsCurrentAdministrator && !confirmed)}
+                                onClick={() =>
+                                    applyGroup(() =>
+                                        deleteAdminGroup(
+                                            details.name,
+                                            details.version,
+                                            affectsCurrentAdministrator ? confirmation : "",
+                                        ),
+                                    ).catch(console.error)
+                                }
+                            >
+                                {translate("Delete group")}
+                            </Button>
+                        </Stack>
+                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                            <TextField
+                                label={translate("Username to add")}
+                                value={usernameToAdd}
+                                onChange={(event) => setUsernameToAdd(event.target.value)}
+                                fullWidth
+                            />
+                            <Button
+                                disabled={!usernameToAdd}
+                                onClick={() =>
+                                    applyGroup(() =>
+                                        addAdminGroupUser(details.name, usernameToAdd, details.version),
+                                    ).catch(console.error)
+                                }
+                            >
+                                {translate("Add member")}
+                            </Button>
+                        </Stack>
+                        <List>
+                            {details.users.map((username) => {
+                                const removesCurrentAdministrator = username === currentUsername;
+                                return (
+                                    <ListItem
+                                        key={username}
+                                        secondaryAction={
+                                            <Button
+                                                aria-label={`Remove ${username}`}
+                                                color="error"
+                                                disabled={removesCurrentAdministrator && !confirmed}
+                                                onClick={() =>
+                                                    applyGroup(() =>
+                                                        removeAdminGroupUser(
+                                                            details.name,
+                                                            username,
+                                                            details.version,
+                                                            removesCurrentAdministrator ? confirmation : "",
+                                                        ),
+                                                    ).catch(console.error)
+                                                }
+                                            >
+                                                {translate("Remove")}
+                                            </Button>
+                                        }
+                                    >
+                                        <ListItemText primary={username} />
+                                    </ListItem>
+                                );
+                            })}
+                        </List>
                     </Stack>
-                    <List>
-                        {details.users.map((username) => {
-                            const removesCurrentAdministrator = username === currentUsername;
-                            return (
-                                <ListItem
-                                    key={username}
-                                    secondaryAction={
-                                        <Button
-                                            aria-label={`Remove ${username}`}
-                                            color="error"
-                                            disabled={removesCurrentAdministrator && !confirmed}
-                                            onClick={() =>
-                                                applyGroup(() =>
-                                                    removeAdminGroupUser(
-                                                        details.name,
-                                                        username,
-                                                        details.version,
-                                                        removesCurrentAdministrator ? confirmation : "",
-                                                    ),
-                                                ).catch(console.error)
-                                            }
-                                        >
-                                            {translate("Remove")}
-                                        </Button>
-                                    }
-                                >
-                                    <ListItemText primary={username} />
-                                </ListItem>
-                            );
-                        })}
-                    </List>
-                </Stack>
+                </fieldset>
             </CardContent>
         </Card>
     );

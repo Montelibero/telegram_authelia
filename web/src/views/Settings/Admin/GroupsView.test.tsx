@@ -6,6 +6,7 @@ import {
     deleteAdminGroup,
     getAdminGroup,
     getAdminGroups,
+    getAdminStatus,
     removeAdminGroupUser,
     renameAdminGroup,
 } from "@services/Admin";
@@ -25,6 +26,7 @@ vi.mock("@services/Admin", () => ({
     deleteAdminGroup: vi.fn(),
     getAdminGroup: vi.fn(),
     getAdminGroups: vi.fn(),
+    getAdminStatus: vi.fn(),
     removeAdminGroupUser: vi.fn(),
     renameAdminGroup: vi.fn(),
 }));
@@ -37,6 +39,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminGroups).mockResolvedValue([summary]);
     vi.mocked(getAdminGroup).mockResolvedValue(details);
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
 });
 
 it("loads groups and group details", async () => {
@@ -47,10 +50,11 @@ it("loads groups and group details", async () => {
 });
 
 it("reauthenticates before group mutations", async () => {
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<GroupsView currentUsername="admin" />);
-    fireEvent.change(screen.getByLabelText("Administrator password"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock changes" }));
+    fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reauthenticate" }));
     await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
 });
 
@@ -58,7 +62,9 @@ it("creates an unrestricted group name", async () => {
     vi.mocked(createAdminGroup).mockResolvedValue(details);
     render(<GroupsView currentUsername="admin" />);
     fireEvent.change(screen.getByLabelText("New group name"), { target: { value: "team, odd" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create group" }));
+    const createButton = screen.getByRole("button", { name: "Create group" });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    fireEvent.click(createButton);
     await waitFor(() => expect(createAdminGroup).toHaveBeenCalledWith("team, odd"));
 });
 

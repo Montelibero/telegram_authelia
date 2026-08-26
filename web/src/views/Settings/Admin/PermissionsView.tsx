@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
     Box,
-    Button,
     Checkbox,
     Chip,
     CircularProgress,
@@ -27,7 +26,7 @@ import {
     grantAdminApplicationUser,
     revokeAdminApplicationUser,
 } from "@services/Admin";
-import { postFirstFactorReauthenticate } from "@services/Password";
+import { isAdminMutationAuthenticationError, useAdminMutationLock } from "@views/Settings/Admin/useAdminMutationLock";
 
 const PermissionsView = function () {
     const { t: translate } = useTranslation("settings");
@@ -37,7 +36,7 @@ const PermissionsView = function () {
     const [busy, setBusy] = useState("");
     const [userFilter, setUserFilter] = useState("");
     const [applicationFilter, setApplicationFilter] = useState("");
-    const [password, setPassword] = useState("");
+    const mutationLock = useAdminMutationLock();
 
     const loadApplications = useCallback(async () => {
         setLoading(true);
@@ -54,16 +53,6 @@ const PermissionsView = function () {
         loadApplications().catch(console.error);
     }, [loadApplications]);
 
-    const unlock = useCallback(async () => {
-        try {
-            await postFirstFactorReauthenticate(password);
-            setPassword("");
-            createSuccessNotification(translate("Administrator actions unlocked"));
-        } catch {
-            createErrorNotification(translate("Incorrect password or reauthentication failed"));
-        }
-    }, [createErrorNotification, createSuccessNotification, password, translate]);
-
     const mutate = useCallback(
         async (application: AdminApplication, user: AdminApplicationUser) => {
             const key = `${application.slug}:${user.username}`;
@@ -75,6 +64,11 @@ const PermissionsView = function () {
                 setApplications(updated);
                 createSuccessNotification(translate("Permission updated"));
             } catch (error) {
+                if (isAdminMutationAuthenticationError(error)) {
+                    mutationLock.lock();
+                    createErrorNotification(translate("Reauthenticate to make administrator changes"));
+                    return;
+                }
                 if ((error as { response?: { status?: number } }).response?.status === 409) {
                     try {
                         setApplications(await getAdminApplications());
@@ -91,7 +85,7 @@ const PermissionsView = function () {
                 setBusy("");
             }
         },
-        [createErrorNotification, createSuccessNotification, translate],
+        [createErrorNotification, createSuccessNotification, mutationLock, translate],
     );
 
     const visibleApplications = useMemo(() => {
@@ -124,20 +118,8 @@ const PermissionsView = function () {
             <Typography component="h1" variant="h4">
                 {translate("Permissions")}
             </Typography>
-            <Alert severity="info">
-                {translate("Permission changes require a recent administrator password check.")}
-            </Alert>
+            {mutationLock.controls}
             <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                <TextField
-                    label={translate("Administrator password")}
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    size="small"
-                />
-                <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
-                    {translate("Unlock changes")}
-                </Button>
                 <TextField
                     label={translate("Filter users")}
                     value={userFilter}
@@ -199,7 +181,7 @@ const PermissionsView = function () {
                                             <TableCell align="center" key={application.slug}>
                                                 <Checkbox
                                                     checked={Boolean(state?.granted)}
-                                                    disabled={!state || busy !== ""}
+                                                    disabled={!state || busy !== "" || !mutationLock.unlocked}
                                                     inputProps={{
                                                         "aria-label": `Access ${user.username} to ${application.name}`,
                                                     }}

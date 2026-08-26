@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
     AdminApplication,
     getAdminApplications,
+    getAdminStatus,
     grantAdminApplicationUser,
     revokeAdminApplicationUser,
 } from "@services/Admin";
@@ -19,6 +20,7 @@ vi.mock("@contexts/NotificationsContext", () => ({
 }));
 vi.mock("@services/Admin", () => ({
     getAdminApplications: vi.fn(),
+    getAdminStatus: vi.fn(),
     grantAdminApplicationUser: vi.fn(),
     revokeAdminApplicationUser: vi.fn(),
 }));
@@ -80,6 +82,7 @@ const applications: AdminApplication[] = [
 beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminApplications).mockResolvedValue(applications);
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
 });
 
 it("shows loading state then renders the permission matrix", async () => {
@@ -112,10 +115,11 @@ it("filters users and applications independently", async () => {
 });
 
 it("reauthenticates with the administrator password", async () => {
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<PermissionsView />);
-    fireEvent.change(screen.getByLabelText("Administrator password"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock changes" }));
+    fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reauthenticate" }));
     await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
     expect(notifySuccess).toHaveBeenCalledWith("Administrator actions unlocked");
 });

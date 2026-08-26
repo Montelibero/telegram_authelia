@@ -6,6 +6,7 @@ import {
     AdminGroupPath,
     AdminGroupUserPath,
     AdminGroupsPath,
+    AdminPath,
     AdminRegistrationApprovePath,
     AdminRegistrationPath,
     AdminRegistrationRejectPath,
@@ -90,6 +91,11 @@ export interface AdminUserSetupLink {
     expires_at: string;
 }
 
+export interface AdminStatus {
+    username: string;
+    password_fresh: boolean;
+}
+
 export interface AdminRegistration {
     id: number;
     provider: string;
@@ -146,6 +152,10 @@ async function adminRequest<T>(config: AxiosRequestConfig): Promise<T> {
     }
 
     return data;
+}
+
+export function getAdminStatus() {
+    return adminRequest<AdminStatus>({ method: "GET", url: AdminPath });
 }
 
 export function getAdminUsers() {
