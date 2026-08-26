@@ -215,7 +215,7 @@ Mutations spanning multiple tables are transactional. Unique email or Telegram i
 The GitHub Actions workflow lives in a dedicated `local/ci-deploy` overlay and runs only for `deploy`. Every deploy push builds and publishes:
 
 ```text
-ghcr.io/montelibero/authelia:latest
+ghcr.io/montelibero/telegram_authelia:latest
 ```
 
 Only `linux/amd64` is required. The image records the source commit SHA in OCI labels, and the workflow reports the immutable image digest for rollback. The server is updated manually and GitHub has no production deployment credentials.

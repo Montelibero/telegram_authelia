@@ -20,7 +20,7 @@ local/ci-deploy
 Only `deploy` is eligible to publish the deployment image. GitHub Actions builds `linux/amd64` and publishes:
 
 ```text
-ghcr.io/montelibero/authelia:latest
+ghcr.io/montelibero/telegram_authelia:latest
 ```
 
 No release tags are created in M6. The workflow must not modify branches, tags, or repository files.

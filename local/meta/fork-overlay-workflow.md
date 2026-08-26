@@ -24,7 +24,7 @@ deploy ────────────────────── exact 
 The remotes are:
 
 ```text
-fork      https://github.com/Montelibero/authelia.git
+fork      https://github.com/Montelibero/telegram_authelia.git
 upstream  https://github.com/authelia/authelia.git
 ```
 

@@ -1,6 +1,6 @@
 # Production Cutover Checklist
 
-This checklist deploys `ghcr.io/montelibero/authelia:latest` on `linux/amd64`, migrates the existing file-backed users into the SQLite-backed user provider, and verifies the Forward Auth identity contract. The server operator runs every command; the implementation agent has no server access.
+This checklist deploys `ghcr.io/montelibero/telegram_authelia:latest` on `linux/amd64`, migrates the existing file-backed users into the SQLite-backed user provider, and verifies the Forward Auth identity contract. The server operator runs every command; the implementation agent has no server access.
 
 The Compose example is deliberately proxy-neutral. Replace its external volume and network names with the existing server resources in the deployment UI. Keep the current reverse-proxy labels or routing configuration unchanged except for the Forward Auth endpoint and copied identity headers.
 
@@ -94,7 +94,7 @@ Confirm the source file contains at least one enabled password-capable administr
 
 ```sh
 docker compose pull authelia
-docker image inspect ghcr.io/montelibero/authelia:latest --format '{{.Architecture}} {{.Id}}'
+docker image inspect ghcr.io/montelibero/telegram_authelia:latest --format '{{.Architecture}} {{.Id}}'
 docker compose run --rm authelia /app/authelia --version
 docker compose run --rm authelia /app/authelia storage user import --help
 ```

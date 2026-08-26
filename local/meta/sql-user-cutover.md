@@ -6,7 +6,7 @@ Replace the example paths and container names with the deployment's actual value
 
 ## Preconditions
 
-- The custom image is `ghcr.io/montelibero/authelia:latest`, built only from the assembled `deploy` branch on the pinned stable baseline.
+- The custom image is `ghcr.io/montelibero/telegram_authelia:latest`, built only from the assembled `deploy` branch on the pinned stable baseline.
 - The current upstream deployment is healthy with the file authentication backend.
 - `/config/users_database.yml` is the exact file currently used by Authelia.
 - SQLite storage is configured at `/config/db.sqlite3`.

@@ -23,7 +23,7 @@ if grep -Fq '.env' "${COMPOSE}"; then
   exit 1
 fi
 
-grep -Fq 'ghcr.io/montelibero/authelia:latest' "${COMPOSE}"
+grep -Fq 'ghcr.io/montelibero/telegram_authelia:latest' "${COMPOSE}"
 grep -Fq -- '- AUTHELIA_SESSION_SECRET=change_me' "${COMPOSE}"
 grep -Fq -- '- AUTHELIA_STORAGE_ENCRYPTION_KEY=change_me' "${COMPOSE}"
 grep -Fq 'docker compose pull authelia' "${CHECKLIST}"

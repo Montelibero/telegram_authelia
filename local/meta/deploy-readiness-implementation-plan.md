@@ -46,7 +46,7 @@
 1. Write a failing workflow-verification script that checks the exact branch trigger, GHCR target, `linux/amd64` platform, `latest` tag, package write permission, and absence of tag/branch mutation steps.
 2. Run it against the missing workflow and confirm failure.
 3. Add a workflow triggered only by pushes to `deploy` and manual dispatch.
-4. Use `docker/login-action`, `docker/setup-buildx-action`, and `docker/build-push-action`; publish `ghcr.io/montelibero/authelia:latest` for `linux/amd64`.
+4. Use `docker/login-action`, `docker/setup-buildx-action`, and `docker/build-push-action`; publish `ghcr.io/montelibero/telegram_authelia:latest` for `linux/amd64`.
 5. Pin third-party actions to immutable commit SHAs and keep permissions minimal.
 6. Run the verifier, YAML parsing, and available workflow security tooling.
 7. Commit the CI slice on `local/ci-deploy`.

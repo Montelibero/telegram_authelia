@@ -2,7 +2,7 @@ name: authelia-mtl
 
 services:
   authelia:
-    image: ghcr.io/montelibero/authelia:latest
+    image: ghcr.io/montelibero/telegram_authelia:latest
     container_name: authelia-mtl
     restart: unless-stopped
     environment:
