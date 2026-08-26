@@ -126,6 +126,10 @@ func handleRequireElevatedShouldDoNext(ctx *AutheliaCtx, userSession *session.Us
 
 	level := userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA)
 
+	if ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode && IsRecentFirstFactorAuthentication(ctx, userSession) {
+		return true
+	}
+
 	if ctx.Configuration.IdentityValidation.ElevatedSession.SkipSecondFactor && level >= authentication.TwoFactor {
 		ctx.Logger.WithFields(map[string]any{"user": userSession.Username}).Trace("The user session elevation was not checked as the user has performed second factor authentication and the policy to skip this is enabled.")
 
@@ -165,6 +169,15 @@ func handleRequireElevatedShouldDoNext(ctx *AutheliaCtx, userSession *session.Us
 	}
 
 	return handleRequireElevatedShouldDoNextValidate(ctx, userSession)
+}
+
+// IsRecentFirstFactorAuthentication returns true when the current session completed first-factor authentication within the configured elevation lifespan.
+func IsRecentFirstFactorAuthentication(ctx *AutheliaCtx, userSession *session.UserSession) bool {
+	now := ctx.GetClock().Now()
+	lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
+	firstFactor := userSession.GetFirstFactorAuthn()
+
+	return lifespan > 0 && !firstFactor.IsZero() && !firstFactor.After(now) && now.Sub(firstFactor) <= lifespan
 }
 
 func handleRequireElevatedShouldDoNextValidate(ctx *AutheliaCtx, userSession *session.UserSession) (doNext bool) {

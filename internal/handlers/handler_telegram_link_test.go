@@ -17,9 +17,10 @@ import (
 )
 
 func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
-	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com", AuthenticationMethodRefs: authorization.AuthenticationMethodsReferences{UsernameAndPassword: true}})
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{Username: "bublik", CookieDomain: "example.com", AuthenticationMethodRefs: authorization.AuthenticationMethodsReferences{External: true}})
 	defer mock.Close()
 	mock.Ctx.Providers.Clock = &mock.Clock
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
 	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
 	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedFor, "127.0.0.1")
 	var sessionCookie fasthttp.Cookie
@@ -37,7 +38,6 @@ func TestTelegramLinkHandlersBindCurrentUser(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "bublik", initialSession.Username)
 	initialSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
-	initialSession.Elevations.User = &session.Elevation{ID: 1, Expires: mock.Clock.Now().Add(time.Minute), RemoteIP: mock.Ctx.RemoteIP()}
 	require.NoError(t, mock.Ctx.SaveSession(initialSession))
 
 	TelegramLinkGET(mock.Ctx)

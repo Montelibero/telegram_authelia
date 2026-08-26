@@ -60,7 +60,7 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	if purpose == "link" {
-		middlewares.RequireFreshPasswordElevation(TelegramLinkCallbackGET)(ctx)
+		middlewares.RequireElevated(TelegramLinkCallbackGET)(ctx)
 		return
 	}
 	if purpose == "password_setup" {
