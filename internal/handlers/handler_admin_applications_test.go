@@ -56,6 +56,35 @@ func TestAdminApplicationsGETReturnsEnabledApplicationsAndSafePermissionState(t 
 	assert.NotContains(t, string(mock.Ctx.Response.Body()), "disabled.example.com")
 }
 
+func TestAdminApplicationsGETUsesGroupsFromAccessControlWithoutApplications(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	mock.Ctx.Configuration.Applications = nil
+	mock.Ctx.Configuration.AccessControl.Rules = []schema.AccessControlRule{
+		{Domains: []string{"grist.example.com"}, Policy: "one_factor", Subjects: [][]string{{"group:app:grist"}}},
+		{Domains: []string{"shared.example.com"}, Policy: "one_factor", Subjects: [][]string{{"group:team / weird:*"}}},
+		{Domains: []string{"admin.example.com"}, Policy: "one_factor", Subjects: [][]string{{"group:admins"}}},
+		{Domains: []string{"duplicate.example.com"}, Policy: "one_factor", Subjects: [][]string{{"group:app:grist"}}},
+	}
+	require.NoError(t, store.ReconcileMTLGroups(t.Context(), []string{"app:grist", "team / weird:*", "admins"}))
+	_, err := store.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "bublik", Email: "bublik@example.com"}, "admin")
+	require.NoError(t, err)
+
+	AdminApplicationsGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+
+	var response struct {
+		Data []adminApplicationResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(mock.Ctx.Response.Body(), &response))
+	require.Len(t, response.Data, 2)
+	assert.Equal(t, "app:grist", response.Data[0].Slug)
+	assert.Equal(t, "app:grist", response.Data[0].Name)
+	assert.Equal(t, "app:grist", response.Data[0].Group)
+	assert.Empty(t, response.Data[0].Domain)
+	assert.Equal(t, "team / weird:*", response.Data[1].Slug)
+	assert.NotContains(t, string(mock.Ctx.Response.Body()), "admins")
+}
+
 func TestAdminApplicationsGETReportsUnavailableBackingGroup(t *testing.T) {
 	mock, _ := newAdminAPITestContext(t)
 	mock.Ctx.Configuration.Applications = []schema.Application{{Slug: "grafana", Name: "Grafana", Domain: "grafana.example.com"}}

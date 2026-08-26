@@ -12,6 +12,71 @@ import (
 	"github.com/authelia/authelia/v4/internal/model"
 )
 
+const (
+	mtlTelegramPreauthorizationPrefix = "_telegram_"
+	mtlPreauthorizationEmailDomain    = "pending.invalid"
+)
+
+// FinalizeMTLTelegramPreauthorization replaces an internal Telegram placeholder before the first session is created.
+func (p *SQLProvider) FinalizeMTLTelegramPreauthorization(ctx context.Context, providerUserID, providerUsername, displayName, generatedEmailDomain string) (details model.MTLUserDetails, finalized bool, err error) {
+	username := strings.TrimPrefix(strings.TrimSpace(providerUsername), "@")
+	if username == "" {
+		return details, false, ErrMTLConflict
+	}
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return details, false, fmt.Errorf("failed to begin Telegram preauthorization finalization: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+
+	var current struct {
+		ID       int64  `db:"id"`
+		Username string `db:"username"`
+		Email    string `db:"email"`
+	}
+	query := tx.Rebind(`SELECT u.id, u.username, e.email
+FROM mtl_users u
+INNER JOIN mtl_user_identities i ON i.user_id = u.id AND i.provider = 'telegram'
+INNER JOIN mtl_user_emails e ON e.user_id = u.id AND e.is_primary = 1
+WHERE i.provider_user_id = ?`)
+	if err = tx.GetContext(ctx, &current, query, strings.TrimSpace(providerUserID)); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return details, false, nil
+		}
+		return details, false, fmt.Errorf("failed to load Telegram preauthorization: %w", err)
+	}
+	if !strings.HasPrefix(current.Username, mtlTelegramPreauthorizationPrefix) {
+		return details, false, nil
+	}
+	name := strings.TrimSpace(displayName)
+	if name == "" {
+		name = username
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_users SET username = ?, display_name = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`), username, name, current.ID); err != nil {
+		return details, false, mapMTLConflict("failed to finalize Telegram preauthorization user", err)
+	}
+	if strings.HasSuffix(strings.ToLower(current.Email), "@"+mtlPreauthorizationEmailDomain) {
+		domain := strings.TrimSpace(generatedEmailDomain)
+		if domain == "" {
+			return details, false, ErrMTLPrimaryEmailRequired
+		}
+		if _, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_user_emails SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND is_primary = 1`), username+"@"+domain, current.ID); err != nil {
+			return details, false, mapMTLConflict("failed to finalize Telegram preauthorization email", err)
+		}
+	}
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_user_identities SET provider_username = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND provider = 'telegram'`), username, current.ID); err != nil {
+		return details, false, fmt.Errorf("failed to finalize Telegram preauthorization identity: %w", err)
+	}
+	if err = auditMTLAdmin(ctx, tx, nil, "user.activated", "user", username); err != nil {
+		return details, false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return details, false, fmt.Errorf("failed to commit Telegram preauthorization finalization: %w", err)
+	}
+	details, finalized, err = p.LoadMTLUserByIdentity(ctx, "telegram", providerUserID)
+	return details, finalized, err
+}
+
 // ListMTLAdminUsers returns all administrative user summaries in username order.
 func (p *SQLProvider) ListMTLAdminUsers(ctx context.Context) ([]model.MTLAdminUserSummary, error) {
 	var usernames []string
@@ -63,6 +128,17 @@ func (p *SQLProvider) LoadMTLAdminUser(ctx context.Context, username string) (de
 	if err = p.db.SelectContext(ctx, &details.Identities, p.db.Rebind(`SELECT id, user_id, provider, provider_user_id, provider_username, created_at, updated_at FROM mtl_user_identities WHERE user_id = ? ORDER BY provider`), user.ID); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin user identities: %w", err)
 	}
+	for _, identity := range details.Identities {
+		if identity.Provider == "telegram" {
+			details.TelegramID = identity.ProviderUserID
+			break
+		}
+	}
+	if strings.HasPrefix(user.Username, mtlTelegramPreauthorizationPrefix) {
+		details.ProvisioningStatus = model.MTLUserStatusAwaitingFirstLogin
+	} else if !details.PasswordEnabled && len(details.Identities) == 0 {
+		details.ProvisioningStatus = model.MTLUserStatusAwaitingPassword
+	}
 	if err = p.db.SelectContext(ctx, &details.Groups, p.db.Rebind(`SELECT g.name FROM mtl_groups g INNER JOIN mtl_group_memberships gm ON gm.group_id = g.id WHERE gm.user_id = ? ORDER BY g.name`), user.ID); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin user groups: %w", err)
 	}
@@ -71,7 +147,21 @@ func (p *SQLProvider) LoadMTLAdminUser(ctx context.Context, username string) (de
 
 // CreateMTLAdminUser creates one active passwordless user with a verified primary email.
 func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAdminUserCreate, actor string) (details model.MTLAdminUserDetails, err error) {
-	if strings.TrimSpace(create.Username) == "" || strings.TrimSpace(create.Email) == "" {
+	telegramID := strings.TrimSpace(create.TelegramID)
+	email := strings.TrimSpace(create.Email)
+	username := strings.TrimSpace(create.Username)
+	if username == "" && email != "" {
+		if at := strings.IndexByte(email, '@'); at > 0 {
+			username = email[:at]
+		}
+	}
+	if username == "" && telegramID != "" {
+		username = mtlTelegramPreauthorizationPrefix + telegramID
+	}
+	if email == "" && telegramID != "" {
+		email = username + "@" + mtlPreauthorizationEmailDomain
+	}
+	if username == "" || email == "" || (telegramID == "" && strings.TrimSpace(create.Email) == "") {
 		return details, ErrMTLPrimaryEmailRequired
 	}
 	tx, err := p.db.BeginTxx(ctx, nil)
@@ -85,9 +175,9 @@ func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAd
 	}
 	displayName := strings.TrimSpace(create.DisplayName)
 	if displayName == "" {
-		displayName = strings.TrimSpace(create.Username)
+		displayName = username
 	}
-	result, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_users (username, display_name, status, password_hash) VALUES (?, ?, 'active', NULL)`), strings.TrimSpace(create.Username), displayName)
+	result, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_users (username, display_name, status, password_hash) VALUES (?, ?, 'active', NULL)`), username, displayName)
 	if err != nil {
 		return details, mapMTLConflict("failed to create MTL admin user", err)
 	}
@@ -95,10 +185,10 @@ func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAd
 	if err != nil {
 		return details, fmt.Errorf("failed to obtain MTL admin user ID: %w", err)
 	}
-	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_emails (user_id, email, is_primary, verified) VALUES (?, ?, 1, 1)`), userID, strings.TrimSpace(create.Email)); err != nil {
+	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_emails (user_id, email, is_primary, verified) VALUES (?, ?, 1, 1)`), userID, email); err != nil {
 		return details, mapMTLConflict("failed to create MTL admin user email", err)
 	}
-	if telegramID := strings.TrimSpace(create.TelegramID); telegramID != "" {
+	if telegramID != "" {
 		if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, 'telegram', ?, '')`), userID, telegramID); err != nil {
 			return details, mapMTLConflict("failed to link MTL admin user Telegram identity", err)
 		}
@@ -114,13 +204,13 @@ func (p *SQLProvider) CreateMTLAdminUser(ctx context.Context, create model.MTLAd
 			return details, ErrMTLConflict
 		}
 	}
-	if err = auditMTLAdmin(ctx, tx, actorID, "user.created", "user", strings.TrimSpace(create.Username)); err != nil {
+	if err = auditMTLAdmin(ctx, tx, actorID, "user.created", "user", username); err != nil {
 		return details, err
 	}
 	if err = tx.Commit(); err != nil {
 		return details, fmt.Errorf("failed to commit MTL admin user creation: %w", err)
 	}
-	details, _, err = p.LoadMTLAdminUser(ctx, create.Username)
+	details, _, err = p.LoadMTLAdminUser(ctx, username)
 	return details, err
 }
 
@@ -139,13 +229,27 @@ func (p *SQLProvider) LinkMTLAdminUserIdentity(ctx context.Context, username str
 	if err != nil {
 		return details, err
 	}
-	if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, ?, ?, '')`), userID, link.Provider, strings.TrimSpace(link.ProviderUserID)); err != nil {
-		return details, mapMTLConflict("failed to link MTL admin identity", err)
+	result, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_user_identities SET provider_user_id = ?, provider_username = '', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND provider = ?`), strings.TrimSpace(link.ProviderUserID), userID, link.Provider)
+	if err != nil {
+		return details, mapMTLConflict("failed to replace MTL admin identity", err)
+	}
+	replaced, err := result.RowsAffected()
+	if err != nil {
+		return details, fmt.Errorf("failed to check MTL admin identity replacement: %w", err)
+	}
+	if replaced == 0 {
+		if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_user_identities (user_id, provider, provider_user_id, provider_username) VALUES (?, ?, ?, '')`), userID, link.Provider, strings.TrimSpace(link.ProviderUserID)); err != nil {
+			return details, mapMTLConflict("failed to link MTL admin identity", err)
+		}
 	}
 	if err = bumpMTLAdminUserVersion(ctx, tx, userID, link.ExpectedVersion, true); err != nil {
 		return details, err
 	}
-	if err = auditMTLAdmin(ctx, tx, actorID, "identity.linked", "user", username); err != nil {
+	action := "identity.linked"
+	if replaced != 0 {
+		action = "identity.replaced"
+	}
+	if err = auditMTLAdmin(ctx, tx, actorID, action, "user", username); err != nil {
 		return details, err
 	}
 	if err = tx.Commit(); err != nil {

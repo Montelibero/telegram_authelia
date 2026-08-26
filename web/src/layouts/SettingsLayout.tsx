@@ -3,7 +3,6 @@ import { ReactNode, SyntheticEvent, useCallback, useEffect, useState } from "rea
 import {
     Close,
     Dashboard,
-    Groups,
     HowToReg,
     ManageAccounts,
     Menu,
@@ -29,7 +28,6 @@ import { useTranslation } from "react-i18next";
 
 import { EncodedName } from "@constants/constants";
 import {
-    AdminGroupsSubRoute,
     AdminPendingSubRoute,
     AdminPermissionsSubRoute,
     AdminUsersSubRoute,
@@ -172,13 +170,6 @@ const navItems: NavItem[] = [
         keyname: "admin-pending",
         pathname: `${SettingsRoute}${AdminPendingSubRoute}`,
         text: "Pending registrations",
-    },
-    {
-        administrator: true,
-        icon: <Groups color={"primary"} />,
-        keyname: "admin-groups",
-        pathname: `${SettingsRoute}${AdminGroupsSubRoute}`,
-        text: "Groups",
     },
     {
         administrator: true,

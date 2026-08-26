@@ -4,13 +4,15 @@ import "time"
 
 // MTLAdminUserSummary is the safe administrative list representation of a user.
 type MTLAdminUserSummary struct {
-	Username        string   `json:"username"`
-	DisplayName     string   `json:"display_name"`
-	Status          string   `json:"status"`
-	Version         int      `json:"version"`
-	PasswordEnabled bool     `json:"password_enabled"`
-	PrimaryEmail    string   `json:"primary_email"`
-	Groups          []string `json:"groups"`
+	Username           string   `json:"username"`
+	DisplayName        string   `json:"display_name"`
+	Status             string   `json:"status"`
+	Version            int      `json:"version"`
+	PasswordEnabled    bool     `json:"password_enabled"`
+	PrimaryEmail       string   `json:"primary_email"`
+	TelegramID         string   `json:"telegram_id,omitempty"`
+	ProvisioningStatus string   `json:"provisioning_status,omitempty"`
+	Groups             []string `json:"groups"`
 }
 
 // MTLAdminUserDetails is the safe administrative detail representation of a user.

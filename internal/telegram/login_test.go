@@ -81,6 +81,30 @@ func TestLoginServiceReturnsPendingRegistrationWithoutUser(t *testing.T) {
 	assert.Empty(t, result.Details.User.Username)
 }
 
+func TestLoginServiceFinalizesPreauthorizedTelegramUserBeforeCreatingSession(t *testing.T) {
+	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x45}, 512)), []byte("test secret"), newFakeStateReplayStore())
+	store := &fakePreauthorizedIdentityUserStore{finalized: model.MTLUserDetails{
+		User:         model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive},
+		PrimaryEmail: "bublik@eurmtl.me",
+		Groups:       []string{"app:grist"},
+	}}
+	service := NewLoginServiceWithRegistration(
+		&fakeLoginClient{identity: Identity{ProviderUserID: "987654321", Username: "bublik", Name: "Bublik"}},
+		states,
+		store,
+		NewRegistrationService(&fakeRegistrationStore{}, "eurmtl.me"),
+	)
+	_, state, err := service.Begin(context.Background(), "")
+	require.NoError(t, err)
+
+	result, err := service.Complete(context.Background(), state, "code")
+	require.NoError(t, err)
+	assert.Equal(t, "bublik", result.Details.User.Username)
+	assert.Empty(t, result.RegistrationStatus)
+	assert.Equal(t, "987654321", store.finalizedProviderUserID)
+	assert.Equal(t, "eurmtl.me", store.finalizedEmailDomain)
+}
+
 func TestLoginServiceReturnsRegistrationStorageError(t *testing.T) {
 	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x44}, 512)), []byte("test secret"), newFakeStateReplayStore())
 	storeErr := errors.New("registration storage failed")
@@ -113,6 +137,19 @@ type fakeIdentityUserStore struct {
 	found          bool
 	err            error
 	providerUserID string
+}
+
+type fakePreauthorizedIdentityUserStore struct {
+	fakeIdentityUserStore
+	finalized               model.MTLUserDetails
+	finalizedProviderUserID string
+	finalizedEmailDomain    string
+}
+
+func (s *fakePreauthorizedIdentityUserStore) FinalizeMTLTelegramPreauthorization(_ context.Context, providerUserID, _, _, emailDomain string) (model.MTLUserDetails, bool, error) {
+	s.finalizedProviderUserID = providerUserID
+	s.finalizedEmailDomain = emailDomain
+	return s.finalized, true, nil
 }
 
 func (s *fakeIdentityUserStore) LoadMTLUserByIdentity(_ context.Context, provider, providerUserID string) (model.MTLUserDetails, bool, error) {

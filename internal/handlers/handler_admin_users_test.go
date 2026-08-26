@@ -96,6 +96,15 @@ func TestAdminUserCanDirectlyLinkTelegramID(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
 }
 
+func TestAdminUserCreateRequiresEmailOrTelegramID(t *testing.T) {
+	mock, _ := newAdminAPITestContext(t)
+
+	mock.Ctx.Request.SetBodyString(`{"username":"unused"}`)
+	AdminUserPOST(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusBadRequest, mock.Ctx.Response.StatusCode())
+}
+
 func TestAdminUserSelfDisableRequiresTypedUsername(t *testing.T) {
 	mock, store := newAdminAPITestContext(t)
 	details, found, err := store.LoadMTLAdminUser(context.Background(), "admin")

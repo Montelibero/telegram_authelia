@@ -3,6 +3,7 @@ package authentication
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,13 +17,18 @@ import (
 type SQLUserProvider struct {
 	config       *schema.AuthenticationBackendSQL
 	applications []schema.Application
+	accessRules  []schema.AccessControlRule
 	store        SQLUserStore
 	hash         algorithm.Hash
 }
 
 // NewSQLUserProvider constructs a SQL user provider without taking ownership of its store.
-func NewSQLUserProvider(config *schema.AuthenticationBackendSQL, store SQLUserStore, applications []schema.Application) *SQLUserProvider {
-	return &SQLUserProvider{config: config, applications: append([]schema.Application(nil), applications...), store: store}
+func NewSQLUserProvider(config *schema.AuthenticationBackendSQL, store SQLUserStore, applications []schema.Application, accessRules ...[]schema.AccessControlRule) *SQLUserProvider {
+	provider := &SQLUserProvider{config: config, applications: append([]schema.Application(nil), applications...), store: store}
+	if len(accessRules) != 0 {
+		provider.accessRules = append([]schema.AccessControlRule(nil), accessRules[0]...)
+	}
+	return provider
 }
 
 // StartupCheck initializes password hashing for updates.
@@ -35,12 +41,42 @@ func (p *SQLUserProvider) StartupCheck() (err error) {
 		return fmt.Errorf("failed to migrate SQL user store: %w", err)
 	}
 
-	if err = p.store.ReconcileMTLGroups(context.Background(), applicationGroups(p.applications)); err != nil {
+	groups := applicationGroups(p.applications)
+	if len(p.applications) == 0 {
+		groups = accessControlGroups(p.accessRules)
+	}
+	if err = p.store.ReconcileMTLGroups(context.Background(), groups); err != nil {
 		return fmt.Errorf("failed to reconcile SQL user groups: %w", err)
 	}
 
 	p.hash, err = NewFileCryptoHashFromConfig(p.config.Password)
 	return err
+}
+
+func accessControlGroups(rules []schema.AccessControlRule) []string {
+	seen := map[string]struct{}{}
+	groups := make([]string, 0)
+	for _, rule := range rules {
+		for _, subjects := range rule.Subjects {
+			for _, subject := range subjects {
+				subject = strings.TrimSpace(subject)
+				if !strings.HasPrefix(subject, "group:") {
+					continue
+				}
+				group := strings.TrimSpace(strings.TrimPrefix(subject, "group:"))
+				if group == "" || strings.EqualFold(group, "admins") {
+					continue
+				}
+				if _, found := seen[group]; found {
+					continue
+				}
+				seen[group] = struct{}{}
+				groups = append(groups, group)
+			}
+		}
+	}
+	sort.Strings(groups)
+	return groups
 }
 
 func applicationGroups(applications []schema.Application) []string {

@@ -113,7 +113,7 @@ func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.Ce
 		return authentication.NewLDAPUserProvider(config.AuthenticationBackend, caCertPool)
 	case config.AuthenticationBackend.SQL != nil && len(stores) == 1:
 		if store, ok := stores[0].(authentication.SQLUserStore); ok {
-			return authentication.NewSQLUserProvider(config.AuthenticationBackend.SQL, store, config.Applications)
+			return authentication.NewSQLUserProvider(config.AuthenticationBackend.SQL, store, config.Applications, config.AccessControl.Rules)
 		}
 
 		return nil

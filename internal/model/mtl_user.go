@@ -74,6 +74,8 @@ type MTLUserImportEmail struct {
 }
 
 const (
-	MTLUserStatusActive   = "active"
-	MTLUserStatusDisabled = "disabled"
+	MTLUserStatusActive             = "active"
+	MTLUserStatusDisabled           = "disabled"
+	MTLUserStatusAwaitingFirstLogin = "awaiting_first_login"
+	MTLUserStatusAwaitingPassword   = "awaiting_password_setup"
 )
