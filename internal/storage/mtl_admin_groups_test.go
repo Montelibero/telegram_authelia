@@ -185,3 +185,29 @@ func TestReconcileMTLGroupsIsSafeAcrossConcurrentProviders(t *testing.T) {
 	require.Len(t, groups, 1)
 	assert.Equal(t, "app:grafana", groups[0].Name)
 }
+
+func TestMTLAdminGroupMutationCommitsWhileAnotherConnectionIsReading(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "db.sqlite3")
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: path}}}
+	writer := NewSQLiteProvider(config)
+	reader := NewSQLiteProvider(config)
+	for _, provider := range []*SQLiteProvider{writer, reader} {
+		require.NoError(t, provider.MigrateMTL(t.Context()))
+		t.Cleanup(func() { require.NoError(t, provider.Close()) })
+	}
+
+	_, err := writer.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com"}, "")
+	require.NoError(t, err)
+	group, err := writer.CreateMTLAdminGroup(t.Context(), "app:grafana", "admin")
+	require.NoError(t, err)
+
+	tx, err := reader.db.BeginTxx(t.Context(), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	var count int
+	require.NoError(t, tx.GetContext(t.Context(), &count, `SELECT COUNT(*) FROM mtl_groups`))
+	require.Equal(t, 1, count)
+
+	_, err = writer.AddMTLAdminGroupUser(t.Context(), group.Name, "admin", group.Version, "admin")
+	require.NoError(t, err)
+}

@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"encoding/base64"
+	"strings"
 
 	"github.com/mattn/go-sqlite3"
 
@@ -17,13 +18,22 @@ type SQLiteProvider struct {
 // NewSQLiteProvider constructs a SQLite provider.
 func NewSQLiteProvider(config *schema.Configuration) (provider *SQLiteProvider) {
 	provider = &SQLiteProvider{
-		SQLProvider: NewSQLProvider(config, providerSQLite, "sqlite3e", config.Storage.Local.Path),
+		SQLProvider: NewSQLProvider(config, providerSQLite, "sqlite3e", sqliteDataSourceName(config.Storage.Local.Path)),
 	}
 
 	// All providers have differing SELECT existing table statements.
 	provider.sqlSelectExistingTables = querySQLiteSelectExistingTables
 
 	return provider
+}
+
+func sqliteDataSourceName(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+
+	return path + separator + "_journal_mode=WAL"
 }
 
 func sqlite3BLOBToTEXTBase64(data []byte) (b64 string) {
