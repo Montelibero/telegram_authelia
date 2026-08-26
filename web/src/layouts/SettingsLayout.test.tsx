@@ -71,7 +71,7 @@ it("renders administrator navigation for administrators", async () => {
 
     expect(screen.getByText("Users")).toBeInTheDocument();
     expect(screen.getByText("Pending registrations")).toBeInTheDocument();
-    expect(screen.getByText("Groups")).toBeInTheDocument();
+    expect(screen.queryByText("Groups")).not.toBeInTheDocument();
     expect(screen.getByText("Permissions")).toBeInTheDocument();
 });
 
