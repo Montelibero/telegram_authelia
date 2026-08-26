@@ -9,8 +9,11 @@ export interface TelegramLinkStatus {
     provider_username?: string;
 }
 
-export function getTelegramLoginURL(returnURL = `${window.location.pathname}${window.location.search}`) {
-    const query = new URLSearchParams({ rd: returnURL });
+export function getTelegramLoginURL(returnURL?: string) {
+    const target = returnURL ?? `${window.location.pathname}${window.location.search}`;
+    if (target === "/") return TelegramLoginPath;
+
+    const query = new URLSearchParams({ rd: target });
     return `${TelegramLoginPath}?${query.toString()}`;
 }
 
