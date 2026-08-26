@@ -36,7 +36,32 @@
 4. Run the targeted tests and the full storage package.
 5. Commit as `feat(logging): expose administrator audit events`.
 
-### Task 3: Regression and deployment verification
+### Task 3: Authentication activity logs
+
+**Files:**
+- Modify: `internal/handlers/response.go`
+- Modify: `internal/handlers/handler_logout.go`
+- Modify: `internal/handlers/handler_logout_test.go`
+- Modify: `internal/handlers/handler_sign_password_test.go`
+
+1. Write failing tests proving successful authentication and logout events are emitted at `info`.
+2. Promote the central authentication-success event so every authentication method is covered without duplicating handler logic.
+3. Emit a logout event only after session destruction succeeds.
+4. Run the targeted tests and the full handlers package.
+5. Commit as `feat(logging): record authentication activity`.
+
+### Task 4: Telegram registration identity visibility
+
+**Files:**
+- Modify: `web/src/views/Settings/Admin/PendingView.tsx`
+- Modify: `web/src/views/Settings/Admin/PendingView.test.tsx`
+
+1. Write a failing test proving both the provider username and numeric Telegram ID are visible.
+2. Display both values in the registration list and details without hiding the email or status.
+3. Run the targeted test and web build.
+4. Commit as `feat(admin): show Telegram IDs in registrations`.
+
+### Task 5: Regression and deployment verification
 
 **Files:**
 - Modify only if a regression requires a scoped correction.

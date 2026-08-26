@@ -81,6 +81,14 @@ func (s *HandlerSignPasswordSuite) TestShouldRedirectUserToDefaultURL() {
 	s.mock.Assert200OK(s.T(), redirectResponse{
 		Redirect: testRedirectionURLString,
 	})
+	found := false
+	for _, entry := range s.mock.Hook.AllEntries() {
+		if entry.Message == "Successful Password authentication attempt made by user 'john'" {
+			found = true
+			s.Equal(logrus.InfoLevel, entry.Level)
+		}
+	}
+	s.True(found)
 }
 
 func (s *HandlerSignPasswordSuite) TestShouldHandleOpenIDConnect() {
