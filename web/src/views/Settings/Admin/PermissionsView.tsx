@@ -166,9 +166,11 @@ const PermissionsView = function () {
                                 {visibleApplications.map((application) => (
                                     <TableCell align="center" key={application.slug}>
                                         <Typography variant="subtitle2">{application.name}</Typography>
-                                        <Typography color="text.secondary" variant="caption">
-                                            {application.domain}
-                                        </Typography>
+                                        {application.domain ? (
+                                            <Typography color="text.secondary" variant="caption">
+                                                {application.domain}
+                                            </Typography>
+                                        ) : null}
                                     </TableCell>
                                 ))}
                             </TableRow>

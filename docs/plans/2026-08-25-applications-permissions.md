@@ -20,7 +20,7 @@
 - Modify: configuration key/default/example files where required
 
 1. Write failing decode and validation tests for configured applications.
-2. Support `slug`, `name`, `domain`, optional `group`, and `enabled`.
+2. Support required `slug` and `name`, plus optional display-only `domain`, `group`, and `enabled`.
 3. Derive an omitted group as `app:<slug>` without restricting otherwise valid group text.
 4. Reject only ambiguity that makes the mapping unsafe: missing required values and duplicate slugs/groups.
 5. Run focused configuration tests and commit.

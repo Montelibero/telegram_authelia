@@ -27,10 +27,6 @@ func ValidateApplications(config *[]schema.Application, validator *schema.Struct
 		if strings.TrimSpace(application.Name) == "" {
 			validator.Push(fmt.Errorf("applications: option 'name' is required for entry %d", entry))
 		}
-		if strings.TrimSpace(application.Domain) == "" {
-			validator.Push(fmt.Errorf("applications: option 'domain' is required for entry %d", entry))
-		}
-
 		if application.Group == "" && application.Slug != "" {
 			application.Group = "app:" + application.Slug
 		}
