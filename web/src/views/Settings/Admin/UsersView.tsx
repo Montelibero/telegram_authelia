@@ -6,6 +6,7 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
     Dialog,
     DialogActions,
@@ -35,6 +36,7 @@ import {
     createAdminUser,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminApplications,
     getAdminGroup,
     getAdminUser,
     getAdminUsers,
@@ -57,6 +59,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [filter, setFilter] = useState("");
+    const [permissionGroups, setPermissionGroups] = useState<string[]>([]);
 
     const loadUsers = useCallback(async () => {
         try {
@@ -71,6 +74,12 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     useEffect(() => {
         loadUsers().catch(console.error);
     }, [loadUsers]);
+
+    useEffect(() => {
+        getAdminApplications()
+            .then((permissions) => setPermissionGroups(permissions.map((permission) => permission.group)))
+            .catch(() => createErrorNotification(translate("Failed to load permissions")));
+    }, [createErrorNotification, translate]);
 
     const openUser = useCallback(
         async (username: string) => {
@@ -156,6 +165,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 </Card>
                 {selected ? (
                     <UserDetails
+                        availableGroups={permissionGroups}
                         key={`${selected.username}:${selected.version}`}
                         details={selected}
                         currentUsername={currentUsername}
@@ -164,6 +174,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 ) : null}
             </Box>
             <CreateUserDialog
+                availableGroups={permissionGroups}
                 open={createOpen}
                 close={() => setCreateOpen(false)}
                 created={async (details) => {
@@ -177,12 +188,13 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
 };
 
 interface UserDetailsProps {
+    availableGroups: string[];
     currentUsername: string;
     details: AdminUserDetails;
     applyDetails: (_operation: () => Promise<AdminUserDetails>) => Promise<void>;
 }
 
-const UserDetails = function ({ applyDetails, currentUsername, details }: UserDetailsProps) {
+const UserDetails = function ({ applyDetails, availableGroups, currentUsername, details }: UserDetailsProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [displayName, setDisplayName] = useState(details.display_name);
@@ -190,7 +202,6 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
     const [confirmation, setConfirmation] = useState("");
     const [newEmail, setNewEmail] = useState("");
     const [newEmailPrimary, setNewEmailPrimary] = useState(false);
-    const [newGroup, setNewGroup] = useState("");
     const [telegramID, setTelegramID] = useState("");
     const [setupLink, setSetupLink] = useState("");
     const [setupExpires, setSetupExpires] = useState("");
@@ -322,48 +333,34 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
                     </Stack>
                     <Divider />
                     <Typography variant="h6">{translate("Groups")}</Typography>
-                    {details.groups.map((group) => (
-                        <Stack direction="row" spacing={1} alignItems="center" key={group}>
-                            <Typography sx={{ flexGrow: 1 }}>{group}</Typography>
-                            <Button
-                                aria-label={"Remove " + group}
-                                color="error"
-                                onClick={() =>
-                                    applyDetails(async () => {
-                                        const current = await getAdminGroup(group);
-                                        await removeAdminGroupUser(
-                                            group,
-                                            details.username,
-                                            current.version,
-                                            confirmation,
-                                        );
-                                        return getAdminUser(details.username);
-                                    }).catch(console.error)
+                    <Stack>
+                        {availableGroups.map((group) => (
+                            <FormControlLabel
+                                key={group}
+                                label={group}
+                                control={
+                                    <Checkbox
+                                        checked={details.groups.includes(group)}
+                                        onChange={(_, checked) =>
+                                            applyDetails(async () => {
+                                                const current = await getAdminGroup(group);
+                                                if (checked) {
+                                                    await addAdminGroupUser(group, details.username, current.version);
+                                                } else {
+                                                    await removeAdminGroupUser(
+                                                        group,
+                                                        details.username,
+                                                        current.version,
+                                                        confirmation,
+                                                    );
+                                                }
+                                                return getAdminUser(details.username);
+                                            }).catch(console.error)
+                                        }
+                                    />
                                 }
-                            >
-                                {translate("Remove")}
-                            </Button>
-                        </Stack>
-                    ))}
-                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                        <TextField
-                            fullWidth
-                            label={translate("New group")}
-                            value={newGroup}
-                            onChange={(event) => setNewGroup(event.target.value)}
-                        />
-                        <Button
-                            disabled={!newGroup || details.groups.includes(newGroup)}
-                            onClick={() =>
-                                applyDetails(async () => {
-                                    const current = await getAdminGroup(newGroup);
-                                    await addAdminGroupUser(newGroup, details.username, current.version);
-                                    return getAdminUser(details.username);
-                                }).catch(console.error)
-                            }
-                        >
-                            {translate("Add group")}
-                        </Button>
+                            />
+                        ))}
                     </Stack>
                     <Divider />
                     <Typography variant="h6">{translate("Linked identities")}</Typography>
@@ -436,12 +433,13 @@ const UserDetails = function ({ applyDetails, currentUsername, details }: UserDe
 };
 
 interface CreateUserDialogProps {
+    availableGroups: string[];
     open: boolean;
     close: () => void;
     created: (_details: AdminUserDetails) => Promise<void>;
 }
 
-const CreateUserDialog = function ({ close, created, open }: CreateUserDialogProps) {
+const CreateUserDialog = function ({ availableGroups, close, created, open }: CreateUserDialogProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification } = useNotifications();
     const [form, setForm] = useState<AdminUserCreate>({
@@ -451,14 +449,12 @@ const CreateUserDialog = function ({ close, created, open }: CreateUserDialogPro
         telegram_id: "",
         username: "",
     });
-    const [group, setGroup] = useState("");
     const [groups, setGroups] = useState<string[]>([]);
 
     const submit = useCallback(async () => {
         try {
             await created(await createAdminUser({ ...form, groups }));
             setForm({ display_name: "", email: "", groups: [], telegram_id: "", username: "" });
-            setGroup("");
             setGroups([]);
         } catch {
             createErrorNotification(translate("Failed to create user; reauthenticate and try again"));
@@ -491,29 +487,24 @@ const CreateUserDialog = function ({ close, created, open }: CreateUserDialogPro
                         slotProps={{ htmlInput: { inputMode: "numeric" } }}
                         onChange={(event) => setForm({ ...form, telegram_id: event.target.value })}
                     />
-                    <Stack direction="row" spacing={1}>
-                        <TextField
-                            label={translate("New group")}
-                            value={group}
-                            onChange={(event) => setGroup(event.target.value)}
-                            fullWidth
-                        />
-                        <Button
-                            disabled={!group || groups.includes(group)}
-                            onClick={() => {
-                                setGroups([...groups, group]);
-                                setGroup("");
-                            }}
-                        >
-                            {translate("Add group")}
-                        </Button>
-                    </Stack>
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                        {groups.map((value) => (
-                            <Chip
-                                key={value}
-                                label={value}
-                                onDelete={() => setGroups(groups.filter((item) => item !== value))}
+                    <Typography variant="subtitle1">{translate("Groups")}</Typography>
+                    <Stack>
+                        {availableGroups.map((group) => (
+                            <FormControlLabel
+                                key={group}
+                                label={group}
+                                control={
+                                    <Checkbox
+                                        checked={groups.includes(group)}
+                                        onChange={(_, checked) =>
+                                            setGroups(
+                                                checked
+                                                    ? [...groups, group]
+                                                    : groups.filter((value) => value !== group),
+                                            )
+                                        }
+                                    />
+                                }
                             />
                         ))}
                     </Stack>

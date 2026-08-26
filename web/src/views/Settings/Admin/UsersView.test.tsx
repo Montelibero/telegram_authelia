@@ -6,6 +6,7 @@ import {
     createAdminUser,
     deleteAdminUserEmail,
     generateAdminUserSetupLink,
+    getAdminApplications,
     getAdminGroup,
     getAdminUser,
     getAdminUsers,
@@ -31,6 +32,7 @@ vi.mock("@services/Admin", () => ({
     createAdminUser: vi.fn(),
     deleteAdminUserEmail: vi.fn(),
     generateAdminUserSetupLink: vi.fn(),
+    getAdminApplications: vi.fn(),
     getAdminGroup: vi.fn(),
     getAdminUser: vi.fn(),
     getAdminUsers: vi.fn(),
@@ -92,6 +94,10 @@ beforeEach(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     vi.mocked(getAdminUsers).mockResolvedValue([summary]);
     vi.mocked(getAdminUser).mockResolvedValue(details);
+    vi.mocked(getAdminApplications).mockResolvedValue([
+        { domain: "", group: "app:grafana", group_version: 1, name: "app:grafana", slug: "app:grafana", users: [] },
+        { domain: "", group: "users", group_version: 1, name: "users", slug: "users", users: [] },
+    ]);
 });
 
 it("loads users and opens user details", async () => {
@@ -132,10 +138,8 @@ it("creates a user", async () => {
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
     fireEvent.change(screen.getByLabelText("Telegram ID"), { target: { value: "987654321" } });
-    fireEvent.change(screen.getByLabelText("New group"), { target: { value: "users" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add group" }));
-    fireEvent.change(screen.getByLabelText("New group"), { target: { value: "app:grafana" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add group" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "users" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "app:grafana" }));
     fireEvent.click(screen.getByRole("button", { name: "Save new user" }));
 
     await waitFor(() =>
@@ -232,7 +236,7 @@ it("manages emails and unlinks identities", async () => {
 it("adds and removes user group memberships", async () => {
     vi.mocked(addAdminGroupUser).mockResolvedValue({
         managed: false,
-        name: "reviewers",
+        name: "app:grafana",
         updated_at: "2026-08-25T00:00:00Z",
         user_count: 1,
         users: ["alice"],
@@ -258,11 +262,10 @@ it("adds and removes user group memberships", async () => {
     fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
     await screen.findByDisplayValue("Alice");
 
-    fireEvent.change(screen.getByLabelText("New group"), { target: { value: "reviewers" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add group" }));
-    await waitFor(() => expect(addAdminGroupUser).toHaveBeenCalledWith("reviewers", "alice", 4));
+    fireEvent.click(screen.getByRole("checkbox", { name: "app:grafana" }));
+    await waitFor(() => expect(addAdminGroupUser).toHaveBeenCalledWith("app:grafana", "alice", 4));
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove users" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "users" }));
     await waitFor(() => expect(removeAdminGroupUser).toHaveBeenCalledWith("users", "alice", 2, ""));
 });
 
