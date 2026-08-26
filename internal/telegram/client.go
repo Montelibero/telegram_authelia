@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -86,6 +87,7 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 
 	claims := struct {
 		Subject       string `json:"sub"`
+		TelegramID    int64  `json:"id"`
 		Nonce         string `json:"nonce"`
 		Username      string `json:"preferred_username"`
 		Name          string `json:"name"`
@@ -103,6 +105,9 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 	if claims.Subject == "" {
 		return Identity{}, errors.New("Telegram ID token subject is required")
 	}
+	if claims.TelegramID <= 0 {
+		return Identity{}, errors.New("Telegram ID token user ID is required")
+	}
 
-	return Identity{ProviderUserID: claims.Subject, Username: claims.Username, Name: claims.Name, Email: claims.Email, EmailVerified: claims.EmailVerified}, nil
+	return Identity{ProviderUserID: strconv.FormatInt(claims.TelegramID, 10), Username: claims.Username, Name: claims.Name, Email: claims.Email, EmailVerified: claims.EmailVerified}, nil
 }
