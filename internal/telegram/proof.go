@@ -36,13 +36,13 @@ func (s *PasswordProofService) Begin(ctx context.Context, username, sessionBindi
 	return s.client.AuthorizationURL(flow), flow.State, nil
 }
 
-func (s *PasswordProofService) Purpose(state string) (string, error) {
-	flow, err := s.states.Inspect(state)
+func (s *PasswordProofService) Purpose(ctx context.Context, state string) (string, error) {
+	flow, err := s.states.Inspect(ctx, state)
 	return flow.Purpose, err
 }
 
 func (s *PasswordProofService) Complete(ctx context.Context, currentUsername, sessionBinding, state, code string) (string, error) {
-	flow, err := s.states.Inspect(state)
+	flow, err := s.states.Inspect(ctx, state)
 	if err != nil {
 		return "", err
 	}
@@ -73,8 +73,8 @@ func (s *PasswordProofService) Complete(ctx context.Context, currentUsername, se
 	return grant.State, nil
 }
 
-func (s *PasswordProofService) Validate(currentUsername, sessionBinding, grant string) (string, error) {
-	flow, err := s.states.Inspect(grant)
+func (s *PasswordProofService) Validate(ctx context.Context, currentUsername, sessionBinding, grant string) (string, error) {
+	flow, err := s.states.Inspect(ctx, grant)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +88,7 @@ func (s *PasswordProofService) Validate(currentUsername, sessionBinding, grant s
 }
 
 func (s *PasswordProofService) Consume(ctx context.Context, currentUsername, sessionBinding, grant string) error {
-	if _, err := s.Validate(currentUsername, sessionBinding, grant); err != nil {
+	if _, err := s.Validate(ctx, currentUsername, sessionBinding, grant); err != nil {
 		return err
 	}
 	if _, err := s.states.Consume(ctx, grant); err != nil {

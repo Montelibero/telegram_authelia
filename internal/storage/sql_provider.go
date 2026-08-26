@@ -1174,9 +1174,7 @@ func (p *SQLProvider) LoadOneTimeCodeByID(ctx context.Context, id int) (code *mo
 	return code, nil
 }
 
-// LoadOneTimeCodeByPublicID loads a one-time code from the storage provider given the public identifier.
-// This does not decrypt the code. This method SHOULD ONLY be used to find the One-Time Code for the
-// purpose of deletion.
+// LoadOneTimeCodeByPublicID loads and decrypts a one-time code from the storage provider given the public identifier.
 func (p *SQLProvider) LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUID) (code *model.OneTimeCode, err error) {
 	code = &model.OneTimeCode{}
 
@@ -1186,6 +1184,9 @@ func (p *SQLProvider) LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUI
 		}
 
 		return nil, fmt.Errorf("error selecting one-time code: %w", err)
+	}
+	if code.Code, err = p.decrypt(code.Code); err != nil {
+		return nil, fmt.Errorf("error decrypting the one-time code value for user '%s' with signature '%s': %w", code.Username, code.Signature, err)
 	}
 
 	return code, nil

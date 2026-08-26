@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -139,14 +140,29 @@ func (s *handlerTelegramRegistrationStore) UpsertMTLRegistration(_ context.Conte
 type handlerStateReplayStore struct {
 	mu       sync.Mutex
 	consumed map[string]bool
+	codes    map[uuid.UUID]model.OneTimeCode
 }
 
 func newHandlerStateReplayStore() *handlerStateReplayStore {
-	return &handlerStateReplayStore{consumed: map[string]bool{}}
+	return &handlerStateReplayStore{consumed: map[string]bool{}, codes: map[uuid.UUID]model.OneTimeCode{}}
 }
 
 func (s *handlerStateReplayStore) SaveOneTimeCode(_ context.Context, code model.OneTimeCode) (string, error) {
-	return base64.RawURLEncoding.EncodeToString(code.Code), nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code.Signature = base64.RawURLEncoding.EncodeToString(code.Code)
+	s.codes[code.PublicID] = code
+	return code.Signature, nil
+}
+
+func (s *handlerStateReplayStore) LoadOneTimeCodeByPublicID(_ context.Context, id uuid.UUID) (*model.OneTimeCode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code, ok := s.codes[id]
+	if !ok {
+		return nil, nil
+	}
+	return &code, nil
 }
 
 func (s *handlerStateReplayStore) ConsumeTelegramState(_ context.Context, signature string, _ time.Time) (bool, error) {
@@ -156,6 +172,11 @@ func (s *handlerStateReplayStore) ConsumeTelegramState(_ context.Context, signat
 		return false, nil
 	}
 	s.consumed[signature] = true
+	for id, code := range s.codes {
+		if code.Signature == signature {
+			delete(s.codes, id)
+		}
+	}
 	return true, nil
 }
 

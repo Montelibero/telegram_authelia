@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,18 +19,31 @@ import (
 type fakeStateReplayStore struct {
 	mu       sync.Mutex
 	consumed map[string]bool
+	codes    map[uuid.UUID]model.OneTimeCode
 	next     int
 }
 
 func newFakeStateReplayStore() *fakeStateReplayStore {
-	return &fakeStateReplayStore{consumed: map[string]bool{}}
+	return &fakeStateReplayStore{consumed: map[string]bool{}, codes: map[uuid.UUID]model.OneTimeCode{}}
 }
 
 func (s *fakeStateReplayStore) SaveOneTimeCode(_ context.Context, code model.OneTimeCode) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.next++
-	return base64.RawURLEncoding.EncodeToString(code.Code) + strconv.Itoa(s.next), nil
+	code.Signature = base64.RawURLEncoding.EncodeToString(code.Code) + strconv.Itoa(s.next)
+	s.codes[code.PublicID] = code
+	return code.Signature, nil
+}
+
+func (s *fakeStateReplayStore) LoadOneTimeCodeByPublicID(_ context.Context, id uuid.UUID) (*model.OneTimeCode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code, ok := s.codes[id]
+	if !ok {
+		return nil, nil
+	}
+	return &code, nil
 }
 
 func (s *fakeStateReplayStore) ConsumeTelegramState(_ context.Context, signature string, _ time.Time) (bool, error) {
@@ -39,6 +53,11 @@ func (s *fakeStateReplayStore) ConsumeTelegramState(_ context.Context, signature
 		return false, nil
 	}
 	s.consumed[signature] = true
+	for id, code := range s.codes {
+		if code.Signature == signature {
+			delete(s.codes, id)
+		}
+	}
 	return true, nil
 }
 
@@ -51,6 +70,7 @@ func TestStateStoreCreatesAndConsumesSingleUseFlow(t *testing.T) {
 	flow, err := store.Create(context.Background(), "https://app.example.com/dashboard")
 	require.NoError(t, err)
 	assert.NotEmpty(t, flow.State)
+	assert.Len(t, flow.State, 36)
 	assert.NotEmpty(t, flow.Nonce)
 	assert.NotEmpty(t, flow.CodeVerifier)
 	assert.Equal(t, now.Add(5*time.Minute), flow.ExpiresAt)
@@ -111,19 +131,6 @@ func TestStateStoreCreatesPasswordSetupAndGrantFlows(t *testing.T) {
 	assert.Equal(t, "password_grant", grant.Purpose)
 	assert.Equal(t, "bublik", grant.Username)
 	assert.Equal(t, "session-a", grant.SessionBinding)
-}
-
-func TestStateStoreRejectsTokenEncryptedWithAnotherKey(t *testing.T) {
-	now := time.Date(2026, time.August, 24, 12, 0, 0, 0, time.UTC)
-	replay := newFakeStateReplayStore()
-	creator := NewStateStore(5*time.Minute, func() time.Time { return now }, bytes.NewReader(bytes.Repeat([]byte{0x42}, 512)), []byte("first secret"), replay)
-	consumer := NewStateStore(5*time.Minute, func() time.Time { return now }, bytes.NewReader(bytes.Repeat([]byte{0x24}, 512)), []byte("second secret"), replay)
-
-	flow, err := creator.Create(context.Background(), "")
-	require.NoError(t, err)
-
-	_, err = consumer.Consume(context.Background(), flow.State)
-	assert.ErrorIs(t, err, ErrInvalidState)
 }
 
 func TestPKCEChallengeUsesS256(t *testing.T) {

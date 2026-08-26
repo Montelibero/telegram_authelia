@@ -89,7 +89,7 @@ func SelfServicePasswordSetPOST(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	binding, ok := selfServiceSessionBinding(ctx)
-	grantSignature, grantErr := ctx.Providers.TelegramPasswordProof.Validate(userSession.Username, binding, grant)
+	grantSignature, grantErr := ctx.Providers.TelegramPasswordProof.Validate(ctx, userSession.Username, binding, grant)
 	if !ok || grantErr != nil {
 		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
 		return

@@ -2,8 +2,6 @@ package telegram
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -34,13 +32,14 @@ type Flow struct {
 	Purpose        string
 	Username       string
 	SessionBinding string
-	ReplayKey      string
+	ReplayKey      string `json:"-"`
 	ExpiresAt      time.Time
 }
 
 // StateReplayStore persists and atomically consumes state replay markers.
 type StateReplayStore interface {
 	SaveOneTimeCode(ctx context.Context, code model.OneTimeCode) (signature string, err error)
+	LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUID) (code *model.OneTimeCode, err error)
 	ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error)
 	PurgeTelegramStates(ctx context.Context, before time.Time) error
 }
@@ -50,12 +49,11 @@ type StateStore struct {
 	ttl    time.Duration
 	now    func() time.Time
 	random io.Reader
-	aead   cipher.AEAD
 	replay StateReplayStore
 }
 
 // NewStateStore constructs a state store. Nil clock and random sources use production defaults.
-func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, secret []byte, replay StateReplayStore) *StateStore {
+func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, _ []byte, replay StateReplayStore) *StateStore {
 	if now == nil {
 		now = time.Now
 	}
@@ -64,17 +62,7 @@ func NewStateStore(ttl time.Duration, now func() time.Time, random io.Reader, se
 		random = rand.Reader
 	}
 
-	key := sha256.Sum256(secret)
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		panic(err)
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		panic(err)
-	}
-
-	return &StateStore{ttl: ttl, now: now, random: random, aead: aead, replay: replay}
+	return &StateStore{ttl: ttl, now: now, random: random, replay: replay}
 }
 
 // Create creates and stores a new Telegram OIDC flow.
@@ -112,10 +100,6 @@ func (s *StateStore) createBound(ctx context.Context, returnURL, purpose, userna
 		return Flow{}, err
 	}
 
-	replayCode := make([]byte, 32)
-	if _, err = io.ReadFull(s.random, replayCode); err != nil {
-		return Flow{}, err
-	}
 	publicID, err := uuid.NewRandomFromReader(s.random)
 	if err != nil {
 		return Flow{}, err
@@ -127,14 +111,6 @@ func (s *StateStore) createBound(ctx context.Context, returnURL, purpose, userna
 	if err = s.replay.PurgeTelegramStates(ctx, s.now()); err != nil {
 		return Flow{}, err
 	}
-	replayKey, err := s.replay.SaveOneTimeCode(ctx, model.OneTimeCode{
-		PublicID: publicID, IssuedAt: s.now(), IssuedIP: model.NewIP(net.IPv4zero), ExpiresAt: expiresAt,
-		Username: "telegram", Intent: "telegram_state", Code: replayCode,
-	})
-	if err != nil {
-		return Flow{}, err
-	}
-
 	flow := Flow{
 		Nonce:          nonce,
 		CodeVerifier:   verifier,
@@ -142,7 +118,6 @@ func (s *StateStore) createBound(ctx context.Context, returnURL, purpose, userna
 		Purpose:        purpose,
 		Username:       username,
 		SessionBinding: sessionBinding,
-		ReplayKey:      replayKey,
 		ExpiresAt:      expiresAt,
 	}
 
@@ -150,30 +125,39 @@ func (s *StateStore) createBound(ctx context.Context, returnURL, purpose, userna
 	if err != nil {
 		return Flow{}, err
 	}
-	nonceBytes := make([]byte, s.aead.NonceSize())
-	if _, err = io.ReadFull(s.random, nonceBytes); err != nil {
+	replayKey, err := s.replay.SaveOneTimeCode(ctx, model.OneTimeCode{
+		PublicID: publicID, IssuedAt: s.now(), IssuedIP: model.NewIP(net.IPv4zero), ExpiresAt: expiresAt,
+		Username: "telegram", Intent: "telegram_state", Code: payload,
+	})
+	if err != nil {
 		return Flow{}, err
 	}
-	flow.State = base64.RawURLEncoding.EncodeToString(append(nonceBytes, s.aead.Seal(nil, nonceBytes, payload, nil)...))
+	flow.State = publicID.String()
+	flow.ReplayKey = replayKey
 
 	return flow, nil
 }
 
-// Inspect decrypts and validates a flow without consuming it.
-func (s *StateStore) Inspect(state string) (Flow, error) {
-	token, err := base64.RawURLEncoding.DecodeString(state)
-	if err != nil || len(token) <= s.aead.NonceSize() {
-		return Flow{}, ErrInvalidState
-	}
-	payload, err := s.aead.Open(nil, token[:s.aead.NonceSize()], token[s.aead.NonceSize():], nil)
+// Inspect loads and validates a flow without consuming it.
+func (s *StateStore) Inspect(ctx context.Context, state string) (Flow, error) {
+	publicID, err := uuid.Parse(state)
 	if err != nil {
 		return Flow{}, ErrInvalidState
 	}
-	flow := Flow{State: state}
-	if err = json.Unmarshal(payload, &flow); err != nil {
+	code, err := s.replay.LoadOneTimeCodeByPublicID(ctx, publicID)
+	if err != nil {
+		return Flow{}, err
+	}
+	if code == nil || code.Username != "telegram" || code.Intent != "telegram_state" {
 		return Flow{}, ErrInvalidState
 	}
-
+	if s.now().After(code.ExpiresAt) {
+		return Flow{State: state, ReplayKey: code.Signature, ExpiresAt: code.ExpiresAt}, ErrExpiredState
+	}
+	flow := Flow{State: state, ReplayKey: code.Signature}
+	if err = json.Unmarshal(code.Code, &flow); err != nil {
+		return Flow{}, ErrInvalidState
+	}
 	if s.now().After(flow.ExpiresAt) {
 		return flow, ErrExpiredState
 	}
@@ -183,7 +167,7 @@ func (s *StateStore) Inspect(state string) (Flow, error) {
 
 // Consume atomically consumes and returns a valid flow as single use across all instances sharing storage.
 func (s *StateStore) Consume(ctx context.Context, state string) (Flow, error) {
-	flow, err := s.Inspect(state)
+	flow, err := s.Inspect(ctx, state)
 	if err != nil {
 		return Flow{}, err
 	}

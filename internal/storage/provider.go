@@ -185,9 +185,7 @@ type Provider interface {
 	// LoadOneTimeCode should be used instead.
 	LoadOneTimeCodeByID(ctx context.Context, id int) (code *model.OneTimeCode, err error)
 
-	// LoadOneTimeCodeByPublicID loads a one-time code from the storage provider given the public identifier.
-	// This does not decrypt the code. This method SHOULD ONLY be used to find the One-Time Code for the
-	// purpose of deletion.
+	// LoadOneTimeCodeByPublicID loads and decrypts a one-time code from the storage provider given the public identifier.
 	LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUID) (code *model.OneTimeCode, err error)
 
 	/*
