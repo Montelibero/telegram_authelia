@@ -105,8 +105,8 @@ func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginR
 }
 
 // Purpose returns the validated purpose of a pending flow without consuming it.
-func (s *LoginService) Purpose(state string) (string, error) {
-	flow, err := s.states.Inspect(state)
+func (s *LoginService) Purpose(ctx context.Context, state string) (string, error) {
+	flow, err := s.states.Inspect(ctx, state)
 	return flow.Purpose, err
 }
 

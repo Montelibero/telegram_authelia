@@ -49,11 +49,11 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 	var purpose string
 	var err error
 	if ctx.Providers.Telegram != nil {
-		purpose, err = ctx.Providers.Telegram.Purpose(state)
+		purpose, err = ctx.Providers.Telegram.Purpose(ctx, state)
 	} else if ctx.Providers.TelegramLink != nil {
-		purpose, err = ctx.Providers.TelegramLink.Purpose(state)
+		purpose, err = ctx.Providers.TelegramLink.Purpose(ctx, state)
 	} else {
-		purpose, err = ctx.Providers.TelegramPasswordProof.Purpose(state)
+		purpose, err = ctx.Providers.TelegramPasswordProof.Purpose(ctx, state)
 	}
 	if err != nil {
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)

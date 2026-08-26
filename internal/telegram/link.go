@@ -75,8 +75,8 @@ func (s *LinkService) Complete(ctx context.Context, currentUsername, state, code
 }
 
 // Purpose returns the validated purpose of a pending flow without consuming it.
-func (s *LinkService) Purpose(state string) (string, error) {
-	flow, err := s.states.Inspect(state)
+func (s *LinkService) Purpose(ctx context.Context, state string) (string, error) {
+	flow, err := s.states.Inspect(ctx, state)
 	return flow.Purpose, err
 }
 
