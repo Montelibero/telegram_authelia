@@ -53,6 +53,18 @@ it("loads pending registrations and editable details", async () => {
     expect(getAdminRegistration).toHaveBeenCalledWith(42);
 });
 
+it("shows both the Telegram username and numeric identity", async () => {
+    render(<PendingView />);
+
+    expect(await screen.findByText("@alice")).toBeInTheDocument();
+    expect(screen.getByText("Telegram ID: 123")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /alice/ }));
+
+    expect(await screen.findByText("telegram: @alice")).toBeInTheDocument();
+    expect(screen.getAllByText("Telegram ID: 123")).toHaveLength(2);
+});
+
 it("loads pending, approved, and rejected registration tabs", async () => {
     render(<PendingView />);
     await waitFor(() => expect(getAdminRegistrations).toHaveBeenCalledWith("pending"));

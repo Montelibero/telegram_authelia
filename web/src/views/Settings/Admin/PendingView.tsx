@@ -31,6 +31,14 @@ import { postFirstFactorReauthenticate } from "@services/Password";
 
 type RegistrationFilter = "all" | AdminRegistration["status"];
 
+const providerIdentityLabel = (registration: AdminRegistration) =>
+    registration.provider_username ? `@${registration.provider_username}` : registration.provider_user_id;
+
+const providerIDLabel = (registration: AdminRegistration) =>
+    registration.provider === "telegram"
+        ? `Telegram ID: ${registration.provider_user_id}`
+        : registration.provider_user_id;
+
 const PendingView = function () {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
@@ -141,8 +149,14 @@ const PendingView = function () {
                                         onClick={() => openRegistration(registration.id).catch(console.error)}
                                     >
                                         <ListItemText
-                                            primary={registration.provider_username ?? registration.provider_user_id}
-                                            secondary={registration.proposed_email ?? registration.status}
+                                            primary={providerIdentityLabel(registration)}
+                                            secondary={
+                                                <>
+                                                    <span>{providerIDLabel(registration)}</span>
+                                                    <br />
+                                                    <span>{registration.proposed_email ?? registration.status}</span>
+                                                </>
+                                            }
                                         />
                                     </ListItemButton>
                                 </ListItem>
@@ -181,10 +195,11 @@ const RegistrationDetails = function ({ registration, resolve }: RegistrationDet
                 <Stack spacing={2}>
                     <Stack direction="row" spacing={1} alignItems="center">
                         <Typography variant="h5">
-                            {registration.provider}: {registration.provider_username ?? registration.provider_user_id}
+                            {registration.provider}: {providerIdentityLabel(registration)}
                         </Typography>
                         <Chip label={registration.status} />
                     </Stack>
+                    <Typography color="text.secondary">{providerIDLabel(registration)}</Typography>
                     <TextField
                         label={translate("Username")}
                         value={username}
