@@ -39,7 +39,7 @@ jobs:
           file: ./local/deploy/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/montelibero/authelia:latest
+          tags: ghcr.io/montelibero/telegram_authelia:latest
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             BUILD_BRANCH=deploy
