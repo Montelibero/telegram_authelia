@@ -41,6 +41,7 @@ func TestClientAuthorizationURL(t *testing.T) {
 func TestClientExchangeVerifiesTokenAndExtractsStableIdentity(t *testing.T) {
 	issuer := newMockIssuer(t, tokenClaims{
 		subject:       "987654321",
+		telegramID:    84131737,
 		username:      "bublik",
 		name:          "Bublik",
 		email:         "bublik@example.com",
@@ -53,7 +54,7 @@ func TestClientExchangeVerifiesTokenAndExtractsStableIdentity(t *testing.T) {
 	identity, err := client.Exchange(context.Background(), "authorization-code", flow)
 	require.NoError(t, err)
 
-	assert.Equal(t, "987654321", identity.ProviderUserID)
+	assert.Equal(t, "84131737", identity.ProviderUserID)
 	assert.Equal(t, "bublik", identity.Username)
 	assert.Equal(t, "Bublik", identity.Name)
 	assert.Equal(t, "bublik@example.com", identity.Email)
@@ -70,6 +71,7 @@ func TestClientExchangeRejectsInvalidTokens(t *testing.T) {
 	}{
 		{name: "WrongNonce", claims: tokenClaims{subject: "1", nonce: "wrong"}, flow: Flow{Nonce: "expected", CodeVerifier: "verifier"}},
 		{name: "MissingSubject", claims: tokenClaims{nonce: "nonce"}, flow: Flow{Nonce: "nonce", CodeVerifier: "verifier"}},
+		{name: "MissingTelegramID", claims: tokenClaims{subject: "1", nonce: "nonce"}, flow: Flow{Nonce: "nonce", CodeVerifier: "verifier"}},
 		{name: "WrongAudience", claims: tokenClaims{subject: "1", nonce: "nonce", audience: "other-client"}, flow: Flow{Nonce: "nonce", CodeVerifier: "verifier"}},
 		{name: "Expired", claims: tokenClaims{subject: "1", nonce: "nonce", expiresAt: time.Now().Add(-time.Hour)}, flow: Flow{Nonce: "nonce", CodeVerifier: "verifier"}},
 		{name: "WrongIssuer", claims: tokenClaims{subject: "1", nonce: "nonce", issuer: "https://issuer.invalid"}, flow: Flow{Nonce: "nonce", CodeVerifier: "verifier"}},
@@ -106,6 +108,7 @@ func newTestClient(t *testing.T, issuer *mockIssuer) *Client {
 
 type tokenClaims struct {
 	subject          string
+	telegramID       int64
 	username         string
 	name             string
 	email            string
@@ -195,6 +198,7 @@ func (m *mockIssuer) signToken() (string, error) {
 		"iss":                issuer,
 		"aud":                audience,
 		"sub":                m.claims.subject,
+		"id":                 m.claims.telegramID,
 		"iat":                now.Unix(),
 		"exp":                expiresAt.Unix(),
 		"nonce":              m.claims.nonce,
