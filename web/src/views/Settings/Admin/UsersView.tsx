@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -46,6 +45,7 @@ import {
     unlinkAdminUserIdentity,
     updateAdminUser,
 } from "@services/Admin";
+import { isAdminMutationAuthenticationError, useAdminMutationLock } from "@views/Settings/Admin/useAdminMutationLock";
 
 interface UsersViewProps {
     currentUsername: string;
@@ -60,6 +60,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     const [createOpen, setCreateOpen] = useState(false);
     const [filter, setFilter] = useState("");
     const [permissionGroups, setPermissionGroups] = useState<string[]>([]);
+    const mutationLock = useAdminMutationLock();
 
     const loadUsers = useCallback(async () => {
         try {
@@ -106,6 +107,11 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 await loadUsers();
                 createSuccessNotification(translate("User updated"));
             } catch (error) {
+                if (isAdminMutationAuthenticationError(error)) {
+                    mutationLock.lock();
+                    createErrorNotification(translate("Reauthenticate to make administrator changes"));
+                    return;
+                }
                 if ((error as { response?: { status?: number } }).response?.status === 409 && selected) {
                     try {
                         setSelected(await getAdminUser(selected.username));
@@ -121,7 +127,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 createErrorNotification(translate("User update failed; reauthenticate or reload and try again"));
             }
         },
-        [createErrorNotification, createSuccessNotification, loadUsers, selected, translate],
+        [createErrorNotification, createSuccessNotification, loadUsers, mutationLock, selected, translate],
     );
 
     const normalizedFilter = filter.trim().toLowerCase();
@@ -136,9 +142,9 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
     return (
         <Stack spacing={2}>
             <Typography variant="h4">{translate("Users")}</Typography>
-            <Alert severity="info">{translate("User changes require a recent successful sign-in.")}</Alert>
+            {mutationLock.controls}
             <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                <Button variant="contained" onClick={() => setCreateOpen(true)}>
+                <Button variant="contained" disabled={!mutationLock.unlocked} onClick={() => setCreateOpen(true)}>
                     {translate("Create user")}
                 </Button>
             </Stack>
@@ -184,6 +190,8 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                         key={`${selected.username}:${selected.version}`}
                         details={selected}
                         currentUsername={currentUsername}
+                        lockMutations={mutationLock.lock}
+                        mutationsUnlocked={mutationLock.unlocked}
                         applyDetails={applyDetails}
                     />
                 ) : null}
@@ -192,6 +200,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 availableGroups={permissionGroups}
                 open={createOpen}
                 close={() => setCreateOpen(false)}
+                lockMutations={mutationLock.lock}
                 created={async (details) => {
                     setSelected(details);
                     await loadUsers();
@@ -205,10 +214,19 @@ interface UserDetailsProps {
     availableGroups: string[];
     currentUsername: string;
     details: AdminUserDetails;
+    lockMutations: () => void;
+    mutationsUnlocked: boolean;
     applyDetails: (_operation: () => Promise<AdminUserDetails>) => Promise<void>;
 }
 
-const UserDetails = function ({ applyDetails, availableGroups, currentUsername, details }: UserDetailsProps) {
+const UserDetails = function ({
+    applyDetails,
+    availableGroups,
+    currentUsername,
+    details,
+    lockMutations,
+    mutationsUnlocked,
+}: UserDetailsProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [displayName, setDisplayName] = useState(details.display_name);
@@ -228,10 +246,11 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
             const link = await generateAdminUserSetupLink(details.username);
             setSetupLink(link.setup_url);
             setSetupExpires(new Date(link.expires_at).toLocaleString());
-        } catch {
+        } catch (error) {
+            if (isAdminMutationAuthenticationError(error)) lockMutations();
             createErrorNotification(translate("Failed to generate setup link"));
         }
-    }, [createErrorNotification, details.username, translate]);
+    }, [createErrorNotification, details.username, lockMutations, translate]);
 
     const copyLink = useCallback(async () => {
         try {
@@ -245,195 +264,209 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
     return (
         <Card variant="outlined">
             <CardContent>
-                <Stack spacing={2}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="h5">
-                            {details.provisioning_status === "awaiting_first_login"
-                                ? `telegram: ${details.telegram_id}`
-                                : details.username}
-                        </Typography>
-                        <Chip label={details.status} color={details.status === "active" ? "success" : "default"} />
-                        {details.provisioning_status ? <Chip label={details.provisioning_status} /> : null}
-                        {details.password_enabled ? <Chip label={translate("Password enabled")} /> : null}
-                    </Stack>
-                    <TextField
-                        label={translate("Display name")}
-                        value={displayName}
-                        onChange={(event) => setDisplayName(event.target.value)}
-                    />
-                    <TextField
-                        label={translate("Status")}
-                        select
-                        value={status}
-                        onChange={(event) => setStatus(event.target.value as AdminUserSummary["status"])}
-                    >
-                        <MenuItem value="active">{translate("Active")}</MenuItem>
-                        <MenuItem value="disabled">{translate("Disabled")}</MenuItem>
-                    </TextField>
-                    <TextField
-                        label={translate("Confirmation username")}
-                        value={confirmation}
-                        helperText={translate("Required for changes that can remove your own access")}
-                        onChange={(event) => setConfirmation(event.target.value)}
-                    />
-                    <Button
-                        variant="contained"
-                        disabled={selfDisableRequiresConfirmation && !confirmed}
-                        onClick={() =>
-                            applyDetails(() =>
-                                updateAdminUser(details.username, details.version, displayName, status, confirmation),
-                            ).catch(console.error)
-                        }
-                    >
-                        {translate("Save user")}
-                    </Button>
-                    <Divider />
-                    <Typography variant="h6">{translate("Email addresses")}</Typography>
-                    {details.emails.map((email) => (
-                        <Stack
-                            direction={{ sm: "row", xs: "column" }}
-                            spacing={1}
-                            key={email.email}
-                            alignItems="center"
-                        >
-                            <Typography sx={{ flexGrow: 1 }}>{email.email}</Typography>
-                            {email.primary ? <Chip label={translate("Primary")} size="small" /> : null}
-                            <Button
-                                aria-label={"Make primary " + email.email}
-                                disabled={email.primary}
-                                onClick={() =>
-                                    applyDetails(() =>
-                                        setAdminUserPrimaryEmail(details.username, email.email, details.version),
-                                    ).catch(console.error)
-                                }
-                            >
-                                {translate("Make primary")}
-                            </Button>
-                            <Button
-                                aria-label={"Delete " + email.email}
-                                color="error"
-                                onClick={() =>
-                                    applyDetails(() =>
-                                        deleteAdminUserEmail(details.username, email.email, details.version),
-                                    ).catch(console.error)
-                                }
-                            >
-                                {translate("Delete")}
-                            </Button>
+                <fieldset disabled={!mutationsUnlocked} style={{ border: 0, margin: 0, padding: 0 }}>
+                    <Stack spacing={2}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography variant="h5">
+                                {details.provisioning_status === "awaiting_first_login"
+                                    ? `telegram: ${details.telegram_id}`
+                                    : details.username}
+                            </Typography>
+                            <Chip label={details.status} color={details.status === "active" ? "success" : "default"} />
+                            {details.provisioning_status ? <Chip label={details.provisioning_status} /> : null}
+                            {details.password_enabled ? <Chip label={translate("Password enabled")} /> : null}
                         </Stack>
-                    ))}
-                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
                         <TextField
-                            label={translate("New email")}
-                            value={newEmail}
-                            onChange={(event) => setNewEmail(event.target.value)}
-                            fullWidth
+                            label={translate("Display name")}
+                            value={displayName}
+                            onChange={(event) => setDisplayName(event.target.value)}
+                        />
+                        <TextField
+                            label={translate("Status")}
+                            select
+                            value={status}
+                            onChange={(event) => setStatus(event.target.value as AdminUserSummary["status"])}
+                        >
+                            <MenuItem value="active">{translate("Active")}</MenuItem>
+                            <MenuItem value="disabled">{translate("Disabled")}</MenuItem>
+                        </TextField>
+                        <TextField
+                            label={translate("Confirmation username")}
+                            value={confirmation}
+                            helperText={translate("Required for changes that can remove your own access")}
+                            onChange={(event) => setConfirmation(event.target.value)}
                         />
                         <Button
-                            disabled={!newEmail}
+                            variant="contained"
+                            disabled={selfDisableRequiresConfirmation && !confirmed}
                             onClick={() =>
                                 applyDetails(() =>
-                                    addAdminUserEmail(details.username, newEmail, details.version, false),
+                                    updateAdminUser(
+                                        details.username,
+                                        details.version,
+                                        displayName,
+                                        status,
+                                        confirmation,
+                                    ),
                                 ).catch(console.error)
                             }
                         >
-                            {translate("Add email")}
+                            {translate("Save user")}
                         </Button>
-                    </Stack>
-                    <Divider />
-                    <Typography variant="h6">{translate("Groups")}</Typography>
-                    <Stack>
-                        {availableGroups.map((group) => (
-                            <FormControlLabel
-                                key={group}
-                                label={group}
-                                control={
-                                    <Checkbox
-                                        checked={details.groups.includes(group)}
-                                        onChange={(_, checked) =>
-                                            applyDetails(async () => {
-                                                const current = await getAdminGroup(group);
-                                                if (checked) {
-                                                    await addAdminGroupUser(group, details.username, current.version);
-                                                } else {
-                                                    await removeAdminGroupUser(
-                                                        group,
-                                                        details.username,
-                                                        current.version,
-                                                        confirmation,
-                                                    );
-                                                }
-                                                return getAdminUser(details.username);
-                                            }).catch(console.error)
-                                        }
-                                    />
-                                }
-                            />
+                        <Divider />
+                        <Typography variant="h6">{translate("Email addresses")}</Typography>
+                        {details.emails.map((email) => (
+                            <Stack
+                                direction={{ sm: "row", xs: "column" }}
+                                spacing={1}
+                                key={email.email}
+                                alignItems="center"
+                            >
+                                <Typography sx={{ flexGrow: 1 }}>{email.email}</Typography>
+                                {email.primary ? <Chip label={translate("Primary")} size="small" /> : null}
+                                <Button
+                                    aria-label={"Make primary " + email.email}
+                                    disabled={email.primary}
+                                    onClick={() =>
+                                        applyDetails(() =>
+                                            setAdminUserPrimaryEmail(details.username, email.email, details.version),
+                                        ).catch(console.error)
+                                    }
+                                >
+                                    {translate("Make primary")}
+                                </Button>
+                                <Button
+                                    aria-label={"Delete " + email.email}
+                                    color="error"
+                                    onClick={() =>
+                                        applyDetails(() =>
+                                            deleteAdminUserEmail(details.username, email.email, details.version),
+                                        ).catch(console.error)
+                                    }
+                                >
+                                    {translate("Delete")}
+                                </Button>
+                            </Stack>
                         ))}
-                    </Stack>
-                    <Divider />
-                    <Typography variant="h6">{translate("Linked identities")}</Typography>
-                    {details.identities.map((identity) => (
-                        <Stack direction="row" spacing={1} alignItems="center" key={identity.provider}>
-                            <Typography sx={{ flexGrow: 1 }}>
-                                {identity.provider}: {identity.provider_username || identity.provider_user_id}
-                            </Typography>
+                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                            <TextField
+                                label={translate("New email")}
+                                value={newEmail}
+                                onChange={(event) => setNewEmail(event.target.value)}
+                                fullWidth
+                            />
                             <Button
-                                aria-label={"Unlink " + identity.provider}
-                                color="error"
-                                disabled={lastLoginUnlinkRequiresConfirmation && !confirmed}
+                                disabled={!newEmail}
                                 onClick={() =>
                                     applyDetails(() =>
-                                        unlinkAdminUserIdentity(
-                                            details.username,
-                                            identity.provider,
-                                            details.version,
-                                            confirmation,
-                                        ),
+                                        addAdminUserEmail(details.username, newEmail, details.version, false),
                                     ).catch(console.error)
                                 }
                             >
-                                {translate("Unlink")}
+                                {translate("Add email")}
                             </Button>
                         </Stack>
-                    ))}
-                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                        <TextField
-                            fullWidth
-                            label={translate("Telegram ID")}
-                            value={telegramID}
-                            slotProps={{ htmlInput: { inputMode: "numeric" } }}
-                            onChange={(event) => setTelegramID(event.target.value)}
-                        />
-                        <Button
-                            disabled={!telegramID.trim() || telegramID.trim() === details.telegram_id}
-                            onClick={() =>
-                                applyDetails(() =>
-                                    linkAdminUserTelegram(details.username, telegramID, details.version),
-                                ).catch(console.error)
-                            }
-                        >
-                            {translate(details.telegram_id ? "Replace Telegram" : "Link Telegram")}
-                        </Button>
-                    </Stack>
-                    <Divider />
-                    <Button variant="outlined" onClick={() => generateLink().catch(console.error)}>
-                        {translate("Generate setup link")}
-                    </Button>
-                    {setupLink ? (
-                        <Stack spacing={1}>
-                            <TextField
-                                label={translate("One-time setup link")}
-                                value={setupLink}
-                                slotProps={{ htmlInput: { readOnly: true } }}
-                            />
-                            <Typography>
-                                {translate("Expires")}: {setupExpires}
-                            </Typography>
-                            <Button onClick={() => copyLink().catch(console.error)}>{translate("Copy link")}</Button>
+                        <Divider />
+                        <Typography variant="h6">{translate("Groups")}</Typography>
+                        <Stack>
+                            {availableGroups.map((group) => (
+                                <FormControlLabel
+                                    key={group}
+                                    label={group}
+                                    control={
+                                        <Checkbox
+                                            checked={details.groups.includes(group)}
+                                            onChange={(_, checked) =>
+                                                applyDetails(async () => {
+                                                    const current = await getAdminGroup(group);
+                                                    if (checked) {
+                                                        await addAdminGroupUser(
+                                                            group,
+                                                            details.username,
+                                                            current.version,
+                                                        );
+                                                    } else {
+                                                        await removeAdminGroupUser(
+                                                            group,
+                                                            details.username,
+                                                            current.version,
+                                                            confirmation,
+                                                        );
+                                                    }
+                                                    return getAdminUser(details.username);
+                                                }).catch(console.error)
+                                            }
+                                        />
+                                    }
+                                />
+                            ))}
                         </Stack>
-                    ) : null}
-                </Stack>
+                        <Divider />
+                        <Typography variant="h6">{translate("Linked identities")}</Typography>
+                        {details.identities.map((identity) => (
+                            <Stack direction="row" spacing={1} alignItems="center" key={identity.provider}>
+                                <Typography sx={{ flexGrow: 1 }}>
+                                    {identity.provider}: {identity.provider_username || identity.provider_user_id}
+                                </Typography>
+                                <Button
+                                    aria-label={"Unlink " + identity.provider}
+                                    color="error"
+                                    disabled={lastLoginUnlinkRequiresConfirmation && !confirmed}
+                                    onClick={() =>
+                                        applyDetails(() =>
+                                            unlinkAdminUserIdentity(
+                                                details.username,
+                                                identity.provider,
+                                                details.version,
+                                                confirmation,
+                                            ),
+                                        ).catch(console.error)
+                                    }
+                                >
+                                    {translate("Unlink")}
+                                </Button>
+                            </Stack>
+                        ))}
+                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                            <TextField
+                                fullWidth
+                                label={translate("Telegram ID")}
+                                value={telegramID}
+                                slotProps={{ htmlInput: { inputMode: "numeric" } }}
+                                onChange={(event) => setTelegramID(event.target.value)}
+                            />
+                            <Button
+                                disabled={!telegramID.trim() || telegramID.trim() === details.telegram_id}
+                                onClick={() =>
+                                    applyDetails(() =>
+                                        linkAdminUserTelegram(details.username, telegramID, details.version),
+                                    ).catch(console.error)
+                                }
+                            >
+                                {translate(details.telegram_id ? "Replace Telegram" : "Link Telegram")}
+                            </Button>
+                        </Stack>
+                        <Divider />
+                        <Button variant="outlined" onClick={() => generateLink().catch(console.error)}>
+                            {translate("Generate setup link")}
+                        </Button>
+                        {setupLink ? (
+                            <Stack spacing={1}>
+                                <TextField
+                                    label={translate("One-time setup link")}
+                                    value={setupLink}
+                                    slotProps={{ htmlInput: { readOnly: true } }}
+                                />
+                                <Typography>
+                                    {translate("Expires")}: {setupExpires}
+                                </Typography>
+                                <Button onClick={() => copyLink().catch(console.error)}>
+                                    {translate("Copy link")}
+                                </Button>
+                            </Stack>
+                        ) : null}
+                    </Stack>
+                </fieldset>
             </CardContent>
         </Card>
     );
@@ -444,9 +477,10 @@ interface CreateUserDialogProps {
     open: boolean;
     close: () => void;
     created: (_details: AdminUserDetails) => Promise<void>;
+    lockMutations: () => void;
 }
 
-const CreateUserDialog = function ({ availableGroups, close, created, open }: CreateUserDialogProps) {
+const CreateUserDialog = function ({ availableGroups, close, created, lockMutations, open }: CreateUserDialogProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [form, setForm] = useState<AdminUserCreate>({
@@ -470,10 +504,11 @@ const CreateUserDialog = function ({ availableGroups, close, created, open }: Cr
             setForm({ display_name: "", email: "", groups: [], telegram_id: "", username: "" });
             setGroups([]);
             close();
-        } catch {
+        } catch (error) {
+            if (isAdminMutationAuthenticationError(error)) lockMutations();
             createErrorNotification(translate("Failed to create user; reauthenticate and try again"));
         }
-    }, [close, createErrorNotification, created, form, groups, translate]);
+    }, [close, createErrorNotification, created, form, groups, lockMutations, translate]);
 
     const copySetupLink = useCallback(async () => {
         if (!setupLink) return;

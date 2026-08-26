@@ -4,6 +4,7 @@ import {
     approveAdminRegistration,
     getAdminRegistration,
     getAdminRegistrations,
+    getAdminStatus,
     rejectAdminRegistration,
 } from "@services/Admin";
 import { postFirstFactorReauthenticate } from "@services/Password";
@@ -20,6 +21,7 @@ vi.mock("@services/Admin", () => ({
     approveAdminRegistration: vi.fn(),
     getAdminRegistration: vi.fn(),
     getAdminRegistrations: vi.fn(),
+    getAdminStatus: vi.fn(),
     rejectAdminRegistration: vi.fn(),
 }));
 vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
@@ -42,6 +44,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminRegistrations).mockResolvedValue([registration]);
     vi.mocked(getAdminRegistration).mockResolvedValue(registration);
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
 });
 
 it("loads pending registrations and editable details", async () => {
@@ -88,10 +91,11 @@ it("clears an actionable pending detail when switching status tabs", async () =>
 });
 
 it("reauthenticates before registration mutations", async () => {
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<PendingView />);
-    fireEvent.change(screen.getByLabelText("Administrator password"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock changes" }));
+    fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reauthenticate" }));
     await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
 });
 

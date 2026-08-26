@@ -8,6 +8,7 @@ import {
     generateAdminUserSetupLink,
     getAdminApplications,
     getAdminGroup,
+    getAdminStatus,
     getAdminUser,
     getAdminUsers,
     linkAdminUserTelegram,
@@ -16,6 +17,7 @@ import {
     unlinkAdminUserIdentity,
     updateAdminUser,
 } from "@services/Admin";
+import { postFirstFactorReauthenticate } from "@services/Password";
 import UsersView from "@views/Settings/Admin/UsersView";
 
 const notifyError = vi.fn();
@@ -34,6 +36,7 @@ vi.mock("@services/Admin", () => ({
     generateAdminUserSetupLink: vi.fn(),
     getAdminApplications: vi.fn(),
     getAdminGroup: vi.fn(),
+    getAdminStatus: vi.fn(),
     getAdminUser: vi.fn(),
     getAdminUsers: vi.fn(),
     linkAdminUserTelegram: vi.fn(),
@@ -42,6 +45,7 @@ vi.mock("@services/Admin", () => ({
     unlinkAdminUserIdentity: vi.fn(),
     updateAdminUser: vi.fn(),
 }));
+vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
 
 const summary = {
     display_name: "Alice",
@@ -99,6 +103,26 @@ beforeEach(() => {
         { domain: "", group: "app:grafana", group_version: 1, name: "app:grafana", slug: "app:grafana", users: [] },
         { domain: "", group: "users", group_version: 1, name: "users", slug: "users", users: [] },
     ]);
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
+});
+
+it("shows only reauthentication controls for mutations while the administrator proof is stale", async () => {
+    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
+    vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
+    render(<UsersView currentUsername="admin" />);
+
+    expect(await screen.findByRole("button", { name: "Reauthenticate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create user" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /alice/i }));
+    expect(await screen.findByRole("button", { name: "Save user" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Administrator password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reauthenticate" }));
+
+    await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
+    expect(screen.getByRole("button", { name: "Create user" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save user" })).toBeEnabled();
 });
 
 it("loads users and opens user details", async () => {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -27,7 +26,7 @@ import {
     getAdminRegistrations,
     rejectAdminRegistration,
 } from "@services/Admin";
-import { postFirstFactorReauthenticate } from "@services/Password";
+import { isAdminMutationAuthenticationError, useAdminMutationLock } from "@views/Settings/Admin/useAdminMutationLock";
 
 type RegistrationFilter = "all" | AdminRegistration["status"];
 
@@ -45,7 +44,7 @@ const PendingView = function () {
     const [filter, setFilter] = useState<RegistrationFilter>("pending");
     const [registrations, setRegistrations] = useState<AdminRegistration[]>([]);
     const [selected, setSelected] = useState<AdminRegistration>();
-    const [password, setPassword] = useState("");
+    const mutationLock = useAdminMutationLock();
 
     const loadRegistrations = useCallback(async () => {
         try {
@@ -70,16 +69,6 @@ const PendingView = function () {
         [createErrorNotification, translate],
     );
 
-    const unlock = useCallback(async () => {
-        try {
-            await postFirstFactorReauthenticate(password);
-            setPassword("");
-            createSuccessNotification(translate("Administrator actions unlocked"));
-        } catch {
-            createErrorNotification(translate("Incorrect password or reauthentication failed"));
-        }
-    }, [createErrorNotification, createSuccessNotification, password, translate]);
-
     const resolve = useCallback(
         async (operation: () => Promise<unknown>) => {
             try {
@@ -88,6 +77,11 @@ const PendingView = function () {
                 await loadRegistrations();
                 createSuccessNotification(translate("Registration resolved"));
             } catch (error) {
+                if (isAdminMutationAuthenticationError(error)) {
+                    mutationLock.lock();
+                    createErrorNotification(translate("Reauthenticate to make administrator changes"));
+                    return;
+                }
                 if ((error as { response?: { status?: number } }).response?.status === 409 && selected) {
                     try {
                         setSelected(await getAdminRegistration(selected.id));
@@ -103,26 +97,14 @@ const PendingView = function () {
                 createErrorNotification(translate("Registration update failed; reauthenticate and try again"));
             }
         },
-        [createErrorNotification, createSuccessNotification, loadRegistrations, selected, translate],
+        [createErrorNotification, createSuccessNotification, loadRegistrations, mutationLock, selected, translate],
     );
 
     return (
         <Stack spacing={2}>
             <Typography variant="h4">{translate("Pending registrations")}</Typography>
-            <Alert severity="info">
-                {translate("Approving or rejecting a registration requires a recent administrator password check.")}
-            </Alert>
+            {mutationLock.controls}
             <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                <TextField
-                    label={translate("Administrator password")}
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    size="small"
-                />
-                <Button variant="outlined" disabled={!password} onClick={() => unlock().catch(console.error)}>
-                    {translate("Unlock changes")}
-                </Button>
                 <Tabs
                     aria-label={translate("Status filter")}
                     value={filter}
@@ -169,6 +151,7 @@ const PendingView = function () {
                         key={selected.id + ":" + selected.version}
                         registration={selected}
                         resolve={resolve}
+                        mutationsUnlocked={mutationLock.unlocked}
                     />
                 ) : null}
             </Box>
@@ -179,9 +162,10 @@ const PendingView = function () {
 interface RegistrationDetailsProps {
     registration: AdminRegistration;
     resolve: (_operation: () => Promise<unknown>) => Promise<void>;
+    mutationsUnlocked: boolean;
 }
 
-const RegistrationDetails = function ({ registration, resolve }: RegistrationDetailsProps) {
+const RegistrationDetails = function ({ mutationsUnlocked, registration, resolve }: RegistrationDetailsProps) {
     const { t: translate } = useTranslation("settings");
     const [username, setUsername] = useState(registration.proposed_username ?? "");
     const [displayName, setDisplayName] = useState(registration.display_name ?? "");
@@ -192,84 +176,90 @@ const RegistrationDetails = function ({ registration, resolve }: RegistrationDet
     return (
         <Card variant="outlined">
             <CardContent>
-                <Stack spacing={2}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="h5">
-                            {registration.provider}: {providerIdentityLabel(registration)}
-                        </Typography>
-                        <Chip label={registration.status} />
-                    </Stack>
-                    <Typography color="text.secondary">{providerIDLabel(registration)}</Typography>
-                    <TextField
-                        label={translate("Username")}
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                    />
-                    <TextField
-                        label={translate("Display name")}
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                    />
-                    <TextField label={translate("Email")} value={email} onChange={(e) => setEmail(e.target.value)} />
-                    <Stack direction="row" spacing={1}>
+                <fieldset disabled={!mutationsUnlocked} style={{ border: 0, margin: 0, padding: 0 }}>
+                    <Stack spacing={2}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography variant="h5">
+                                {registration.provider}: {providerIdentityLabel(registration)}
+                            </Typography>
+                            <Chip label={registration.status} />
+                        </Stack>
+                        <Typography color="text.secondary">{providerIDLabel(registration)}</Typography>
                         <TextField
-                            label={translate("New group")}
-                            value={group}
-                            onChange={(event) => setGroup(event.target.value)}
-                            fullWidth
+                            label={translate("Username")}
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                         />
-                        <Button
-                            disabled={!group || groups.includes(group)}
-                            onClick={() => {
-                                setGroups([...groups, group]);
-                                setGroup("");
-                            }}
-                        >
-                            {translate("Add group")}
-                        </Button>
-                    </Stack>
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                        {groups.map((value) => (
-                            <Chip
-                                key={value}
-                                label={value}
-                                onDelete={() => setGroups(groups.filter((item) => item !== value))}
-                            />
-                        ))}
-                    </Stack>
-                    {registration.status === "pending" ? (
+                        <TextField
+                            label={translate("Display name")}
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                        />
+                        <TextField
+                            label={translate("Email")}
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
                         <Stack direction="row" spacing={1}>
+                            <TextField
+                                label={translate("New group")}
+                                value={group}
+                                onChange={(event) => setGroup(event.target.value)}
+                                fullWidth
+                            />
                             <Button
-                                variant="contained"
-                                onClick={() =>
-                                    resolve(() =>
-                                        approveAdminRegistration({
-                                            display_name: displayName,
-                                            email,
-                                            expected_version: registration.version,
-                                            groups,
-                                            id: registration.id,
-                                            username,
-                                        }),
-                                    ).catch(console.error)
-                                }
+                                disabled={!group || groups.includes(group)}
+                                onClick={() => {
+                                    setGroups([...groups, group]);
+                                    setGroup("");
+                                }}
                             >
-                                {translate("Approve")}
-                            </Button>
-                            <Button
-                                color="error"
-                                variant="outlined"
-                                onClick={() =>
-                                    resolve(() => rejectAdminRegistration(registration.id, registration.version)).catch(
-                                        console.error,
-                                    )
-                                }
-                            >
-                                {translate("Reject")}
+                                {translate("Add group")}
                             </Button>
                         </Stack>
-                    ) : null}
-                </Stack>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            {groups.map((value) => (
+                                <Chip
+                                    key={value}
+                                    label={value}
+                                    onDelete={() => setGroups(groups.filter((item) => item !== value))}
+                                />
+                            ))}
+                        </Stack>
+                        {registration.status === "pending" ? (
+                            <Stack direction="row" spacing={1}>
+                                <Button
+                                    variant="contained"
+                                    onClick={() =>
+                                        resolve(() =>
+                                            approveAdminRegistration({
+                                                display_name: displayName,
+                                                email,
+                                                expected_version: registration.version,
+                                                groups,
+                                                id: registration.id,
+                                                username,
+                                            }),
+                                        ).catch(console.error)
+                                    }
+                                >
+                                    {translate("Approve")}
+                                </Button>
+                                <Button
+                                    color="error"
+                                    variant="outlined"
+                                    onClick={() =>
+                                        resolve(() =>
+                                            rejectAdminRegistration(registration.id, registration.version),
+                                        ).catch(console.error)
+                                    }
+                                >
+                                    {translate("Reject")}
+                                </Button>
+                            </Stack>
+                        ) : null}
+                    </Stack>
+                </fieldset>
             </CardContent>
         </Card>
     );

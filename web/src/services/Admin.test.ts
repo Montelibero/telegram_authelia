@@ -14,6 +14,7 @@ import {
     getAdminGroups,
     getAdminRegistration,
     getAdminRegistrations,
+    getAdminStatus,
     getAdminUser,
     getAdminUsers,
     grantAdminApplicationUser,
@@ -32,6 +33,16 @@ vi.mock("axios");
 const mockedAxios = vi.mocked(axios);
 
 beforeEach(() => mockedAxios.mockReset());
+
+it("loads the current administrator mutation capability", async () => {
+    mockedAxios.mockResolvedValueOnce({
+        data: { data: { password_fresh: false, username: "admin" }, status: "OK" },
+        status: 200,
+    });
+
+    await expect(getAdminStatus()).resolves.toEqual({ password_fresh: false, username: "admin" });
+    expect(mockedAxios).toHaveBeenCalledWith({ method: "GET", url: "/api/admin" });
+});
 
 it("loads users and user details", async () => {
     mockedAxios

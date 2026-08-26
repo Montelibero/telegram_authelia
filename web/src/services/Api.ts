@@ -46,6 +46,7 @@ export const UserInfoPath = basePath + "/api/user/info";
 export const UserInfo2FAMethodPath = basePath + "/api/user/info/2fa_method";
 export const UserSessionElevationPath = basePath + "/api/user/session/elevation";
 
+export const AdminPath = basePath + "/api/admin";
 export const AdminUsersPath = basePath + "/api/admin/users";
 export const AdminUserPath = basePath + "/api/admin/user";
 export const AdminUserEmailPath = basePath + "/api/admin/users/email";
