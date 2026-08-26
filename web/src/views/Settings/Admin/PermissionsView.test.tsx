@@ -93,6 +93,14 @@ it("shows loading state then renders the permission matrix", async () => {
     expect(screen.getByText(/bob@example.com/)).toBeInTheDocument();
 });
 
+it("omits domain metadata when an application has no domain", async () => {
+    vi.mocked(getAdminApplications).mockResolvedValue([{ ...applications[0], domain: "" }]);
+    render(<PermissionsView />);
+
+    const heading = await screen.findByText("Grafana");
+    expect(heading.closest("th")?.querySelector(".MuiTypography-caption")).not.toBeInTheDocument();
+});
+
 it("filters users and applications independently", async () => {
     render(<PermissionsView />);
     await screen.findByRole("checkbox", { name: "Access alice to Grafana" });

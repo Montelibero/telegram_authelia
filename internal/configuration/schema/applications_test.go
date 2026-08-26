@@ -15,7 +15,6 @@ func TestApplicationsConfigurationDecodes(t *testing.T) {
 applications:
   - slug: grafana
     name: Grafana
-    domain: grafana.example.com
   - slug: disabled
     name: Disabled
     domain: disabled.example.com
