@@ -17,6 +17,7 @@ import {
     getAdminUser,
     getAdminUsers,
     grantAdminApplicationUser,
+    linkAdminUserTelegram,
     rejectAdminRegistration,
     removeAdminGroupUser,
     renameAdminGroup,
@@ -43,6 +44,18 @@ it("loads users and user details", async () => {
     expect(mockedAxios).toHaveBeenNthCalledWith(2, {
         method: "GET",
         url: "/api/admin/user?username=alice+%26+bob",
+    });
+});
+
+it("links a Telegram ID to an existing user", async () => {
+    mockedAxios.mockResolvedValue({ data: { data: {}, status: "OK" }, status: 200 } as any);
+
+    await linkAdminUserTelegram("alice", "987654321", 3);
+
+    expect(mockedAxios).toHaveBeenCalledWith({
+        data: { expected_version: 3, provider: "telegram", provider_user_id: "987654321", username: "alice" },
+        method: "PUT",
+        url: "/api/admin/users/identity",
     });
 });
 

@@ -22,7 +22,7 @@ import (
 func TestAdminUsersAPIWorkflow(t *testing.T) {
 	mock, store := newAdminAPITestContext(t)
 
-	mock.Ctx.Request.SetBodyString(`{"username":"bublik","display_name":"Bublik","email":"bublik@example.com"}`)
+	mock.Ctx.Request.SetBodyString(`{"username":"bublik","display_name":"Bublik","email":"bublik@example.com","telegram_id":"42"}`)
 	AdminUserPOST(mock.Ctx)
 	assert.Equal(t, fasthttp.StatusCreated, mock.Ctx.Response.StatusCode())
 
@@ -40,6 +40,10 @@ func TestAdminUsersAPIWorkflow(t *testing.T) {
 	details, found, err := store.LoadMTLAdminUser(context.Background(), "bublik")
 	require.NoError(t, err)
 	require.True(t, found)
+	resolved, found, err := store.LoadMTLUserByIdentity(context.Background(), "telegram", "42")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "bublik", resolved.User.Username)
 	mock.Ctx.Response.Reset()
 	mock.Ctx.Request.SetBodyString(`{"username":"bublik","expected_version":` + jsonInt(details.Version) + `,"email":"other@example.com","primary":true}`)
 	AdminUserEmailPOST(mock.Ctx)
@@ -59,7 +63,6 @@ func TestAdminUsersAPIWorkflow(t *testing.T) {
 
 	details, _, err = store.LoadMTLAdminUser(context.Background(), "bublik")
 	require.NoError(t, err)
-	require.NoError(t, store.LinkMTLUserIdentity(context.Background(), "bublik", "telegram", "42", "bublik"))
 	mock.Ctx.Response.Reset()
 	mock.Ctx.Request.SetBodyString(`{"username":"bublik","provider":"telegram","expected_version":` + jsonInt(details.Version) + `}`)
 	AdminUserIdentityDELETE(mock.Ctx)
@@ -70,6 +73,26 @@ func TestAdminUsersAPIWorkflow(t *testing.T) {
 	mock.Ctx.Response.Reset()
 	mock.Ctx.Request.SetBodyString(`{"username":"bublik","display_name":"Bublik Disabled","status":"disabled","expected_version":` + jsonInt(details.Version+1) + `}`)
 	AdminUserPATCH(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
+}
+
+func TestAdminUserCanDirectlyLinkTelegramID(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	created, err := store.CreateMTLAdminUser(context.Background(), model.MTLAdminUserCreate{Username: "target", Email: "target@example.com"}, "admin")
+	require.NoError(t, err)
+
+	mock.Ctx.Request.SetBodyString(`{"username":"target","provider":"telegram","provider_user_id":"987654321","expected_version":` + jsonInt(created.Version) + `}`)
+	AdminUserIdentityPUT(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+
+	resolved, found, err := store.LoadMTLUserByIdentity(context.Background(), "telegram", "987654321")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "target", resolved.User.Username)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"username":"admin","provider":"telegram","provider_user_id":"987654321","expected_version":0}`)
+	AdminUserIdentityPUT(mock.Ctx)
 	assert.Equal(t, fasthttp.StatusConflict, mock.Ctx.Response.StatusCode())
 }
 
@@ -210,6 +233,10 @@ func (s adminAPITestStore) DeleteMTLAdminUserEmail(_ context.Context, username, 
 
 func (s adminAPITestStore) UnlinkMTLAdminUserIdentity(_ context.Context, username, provider string, version int, actor string) (model.MTLAdminUserDetails, error) {
 	return s.SQLiteProvider.UnlinkMTLAdminUserIdentity(context.Background(), username, provider, version, actor)
+}
+
+func (s adminAPITestStore) LinkMTLAdminUserIdentity(_ context.Context, username string, link model.MTLAdminIdentityLink, actor string) (model.MTLAdminUserDetails, error) {
+	return s.SQLiteProvider.LinkMTLAdminUserIdentity(context.Background(), username, link, actor)
 }
 
 func (s adminAPITestStore) ListMTLAdminGroups(context.Context) ([]model.MTLAdminGroupSummary, error) {

@@ -22,6 +22,7 @@ type MethodList = []string
 // configurationBody the content returned by the configuration endpoint.
 type configurationBody struct {
 	AvailableMethods       MethodList `json:"available_methods"`
+	PasskeyLoginEnabled    bool       `json:"passkey_login_enabled"`
 	PasswordChangeDisabled bool       `json:"password_change_disabled"`
 	PasswordResetDisabled  bool       `json:"password_reset_disabled"`
 }

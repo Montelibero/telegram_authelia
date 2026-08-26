@@ -44,7 +44,8 @@ const TwoFactorAuthenticationView = function () {
         setRefreshTOTPState((refreshTOTPState) => refreshTOTPState + 1);
     };
 
-    const enabledWebAuthn = configuration?.available_methods.has(SecondFactorMethod.WebAuthn);
+    const enabledWebAuthn =
+        configuration?.passkey_login_enabled || configuration?.available_methods.has(SecondFactorMethod.WebAuthn);
     const enabledTOTP = configuration?.available_methods.has(SecondFactorMethod.TOTP);
 
     useEffect(() => {

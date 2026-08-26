@@ -16,6 +16,7 @@ vi.mock("@services/UserInfo", () => ({
 it("gets configuration and transforms available methods", async () => {
     (Get as any).mockResolvedValue({
         available_methods: ["totp", "webauthn"],
+        passkey_login_enabled: true,
         password_change_disabled: false,
         password_reset_disabled: true,
     });
@@ -28,6 +29,7 @@ it("gets configuration and transforms available methods", async () => {
     expect(result.available_methods).toBeInstanceOf(Set);
     expect(result.available_methods.has(SecondFactorMethod.TOTP)).toBe(true);
     expect(result.available_methods.has(SecondFactorMethod.WebAuthn)).toBe(true);
+    expect(result.passkey_login_enabled).toBe(true);
     expect(result.password_change_disabled).toBe(false);
     expect(result.password_reset_disabled).toBe(true);
 });

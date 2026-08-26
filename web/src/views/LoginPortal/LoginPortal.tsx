@@ -136,7 +136,7 @@ const LoginPortal = function (props: Props) {
             } else {
                 const method = localStorageMethod || userInfo.method;
 
-                if (!state!.factor_knowledge && !redirectionURL) {
+                if (!redirectionURL) {
                     navigate(AuthenticatedRoute, false);
                 } else if (!state!.factor_knowledge) {
                     navigate(`${SecondFactorRoute}${SecondFactorPasswordSubRoute}`);

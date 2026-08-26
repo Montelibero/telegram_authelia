@@ -71,7 +71,7 @@ func TestRequireAdminMutation(t *testing.T) {
 		fresh    bool
 		expected int
 	}{
-		{name: "telegram admin without password", expected: fasthttp.StatusForbidden},
+		{name: "fresh telegram admin without password", fresh: true, expected: fasthttp.StatusOK},
 		{name: "fresh password without email elevation", password: true, fresh: true, expected: fasthttp.StatusOK},
 		{name: "stale password", password: true, expected: fasthttp.StatusForbidden},
 	}
@@ -80,6 +80,7 @@ func TestRequireAdminMutation(t *testing.T) {
 			mock := mocks.NewMockAutheliaCtx(t)
 			defer mock.Close()
 			mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+			mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
 			mock.Ctx.Providers.Clock = &mock.Clock
 			mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedFor, "127.0.0.1")
 			mock.Ctx.Request.Header.SetHost("auth.example.com")
@@ -123,6 +124,7 @@ func TestRequireAdminMutationSameOrigin(t *testing.T) {
 			mock := mocks.NewMockAutheliaCtx(t)
 			defer mock.Close()
 			mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+			mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
 			mock.Ctx.Providers.Clock = &mock.Clock
 			mock.Ctx.Request.Header.SetHost("auth.example.com")
 			mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedHost, "auth.example.com")

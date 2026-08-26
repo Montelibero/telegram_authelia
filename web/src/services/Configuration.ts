@@ -5,6 +5,7 @@ import { Method2FA, toSecondFactorMethod } from "@services/UserInfo";
 
 interface ConfigurationPayload {
     available_methods: Method2FA[];
+    passkey_login_enabled: boolean;
     password_change_disabled: boolean;
     password_reset_disabled: boolean;
 }
@@ -14,6 +15,7 @@ export async function getConfiguration(): Promise<Configuration> {
     return {
         ...config,
         available_methods: new Set(config.available_methods.map(toSecondFactorMethod)),
+        passkey_login_enabled: config.passkey_login_enabled,
         password_change_disabled: config.password_change_disabled,
         password_reset_disabled: config.password_reset_disabled,
     };
