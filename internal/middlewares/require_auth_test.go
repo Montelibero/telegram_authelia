@@ -408,6 +408,46 @@ func TestRequireFreshPasswordElevation(t *testing.T) {
 	})
 }
 
+func TestRequireElevatedAcceptsFreshExternalAuthenticationWhenOneTimeCodesDisabled(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+	mock.Ctx.Providers.Clock = &mock.Clock
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.AuthenticationMethodRefs.External = true
+	userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	middlewares.RequireElevated(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+}
+
+func TestRequireElevatedRejectsExpiredExternalAuthenticationWhenOneTimeCodesDisabled(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+	mock.Ctx.Providers.Clock = &mock.Clock
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.AuthenticationMethodRefs.External = true
+	userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Add(-2 * time.Minute).Unix()
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	middlewares.RequireElevated(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+}
+
 func NilHandler(ctx *middlewares.AutheliaCtx) {
 	ctx.SetContentTypeTextPlain()
 	ctx.Response.SetBodyString("Example Nil")

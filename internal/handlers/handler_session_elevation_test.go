@@ -55,6 +55,25 @@ func TestUserSessionElevationGET(t *testing.T) {
 			nil,
 		},
 		{
+			"ShouldHandleFreshExternalFactorWhenOneTimeCodesDisabled",
+			func(t *testing.T, mock *mocks.MockAutheliaCtx) {
+				mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+				mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+
+				us, err := mock.Ctx.GetSession()
+				require.NoError(t, err)
+				us.Username = testUsername
+				us.AuthenticationMethodRefs.External = true
+				us.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+				require.NoError(t, mock.Ctx.SaveSession(us))
+
+				mock.StorageMock.EXPECT().LoadUserInfo(mock.Ctx, testUsername).Return(model.UserInfo{}, nil)
+			},
+			`{"status":"OK","data":{"require_second_factor":false,"skip_second_factor":false,"can_skip_second_factor":false,"factor_knowledge":false,"elevated":true,"expires":60}}`,
+			fasthttp.StatusOK,
+			nil,
+		},
+		{
 			"ShouldHandleOneFactorRequireSecondFactor",
 			func(t *testing.T, mock *mocks.MockAutheliaCtx) {
 				mock.Ctx.Configuration.IdentityValidation.ElevatedSession.RequireSecondFactor = true
@@ -326,6 +345,15 @@ func TestUserSessionElevationPOST(t *testing.T) {
 		expectedStatus int
 		expectedf      func(t *testing.T, mock *mocks.MockAutheliaCtx)
 	}{
+		{
+			"ShouldRejectWhenOneTimeCodesDisabled",
+			func(t *testing.T, mock *mocks.MockAutheliaCtx) {
+				mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+			},
+			`{"status":"KO","message":"Operation failed."}`,
+			fasthttp.StatusForbidden,
+			nil,
+		},
 		{
 			"ShouldHandleOneFactor",
 			func(t *testing.T, mock *mocks.MockAutheliaCtx) {

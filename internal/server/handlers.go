@@ -215,11 +215,6 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPostMiddlewares(middlewares.RequireElevated).
 		Build()
 
-	middlewareElevatedPassword := middlewares.NewBridgeBuilder(*config, providers).
-		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
-		WithPostMiddlewares(middlewares.RequireFreshPasswordElevation).
-		Build()
-
 	middlewareAdmin := middlewares.NewBridgeBuilder(*config, providers).
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
 		WithPostMiddlewares(middlewares.RequireAdmin).
@@ -299,9 +294,9 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		rateLimitTelegramStart := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.TelegramStart), middlewares.WithRateLimitContext(ctx))
 		r.GET("/api/telegram/login", middlewareAPI(rateLimitTelegramStart(handlers.TelegramLoginGET)))
 		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
-		r.GET("/api/telegram/link", middlewareElevatedPassword(rateLimitTelegramStart(handlers.TelegramLinkGET)))
+		r.GET("/api/telegram/link", middlewareElevated1FA(rateLimitTelegramStart(handlers.TelegramLinkGET)))
 		r.GET("/api/telegram/link/status", middleware1FA(handlers.TelegramLinkStatusGET))
-		r.DELETE("/api/telegram/link", middlewareElevatedPassword(handlers.TelegramUnlinkDELETE))
+		r.DELETE("/api/telegram/link", middlewareElevated1FA(handlers.TelegramUnlinkDELETE))
 		r.GET("/api/self-service/password/telegram", middleware1FA(rateLimitTelegramStart(handlers.TelegramPasswordProofGET)))
 		r.POST("/api/self-service/password", middleware1FA(middlewares.RequireSameOriginMutation(handlers.SelfServicePasswordSetPOST)))
 		r.DELETE("/api/self-service/password", middleware1FA(middlewares.RequireSameOriginMutation(handlers.SelfServicePasswordDELETE)))

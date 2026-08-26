@@ -307,6 +307,7 @@ var Keys = []string{
 	"identity_providers.oidc.scopes.*.claims",
 	"identity_validation.elevated_session.characters",
 	"identity_validation.elevated_session.code_lifespan",
+	"identity_validation.elevated_session.disable_one_time_code",
 	"identity_validation.elevated_session.elevation_lifespan",
 	"identity_validation.elevated_session.require_second_factor",
 	"identity_validation.elevated_session.skip_second_factor",

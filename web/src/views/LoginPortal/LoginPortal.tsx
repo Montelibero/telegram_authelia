@@ -136,7 +136,9 @@ const LoginPortal = function (props: Props) {
             } else {
                 const method = localStorageMethod || userInfo.method;
 
-                if (!state!.factor_knowledge) {
+                if (!state!.factor_knowledge && !redirectionURL) {
+                    navigate(AuthenticatedRoute, false);
+                } else if (!state!.factor_knowledge) {
                     navigate(`${SecondFactorRoute}${SecondFactorPasswordSubRoute}`);
                 } else if (method === SecondFactorMethod.WebAuthn) {
                     navigate(`${SecondFactorRoute}${SecondFactorWebAuthnSubRoute}`);
@@ -147,7 +149,7 @@ const LoginPortal = function (props: Props) {
                 }
             }
         }
-    }, [state, userInfo, configuration, navigate, localStorageMethod]);
+    }, [state, userInfo, configuration, navigate, localStorageMethod, redirectionURL]);
 
     useEffect(() => {
         (async function () {
