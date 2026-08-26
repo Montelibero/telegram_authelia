@@ -82,7 +82,7 @@ const applications: AdminApplication[] = [
 beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminApplications).mockResolvedValue(applications);
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: true, username: "admin" });
 });
 
 it("shows loading state then renders the permission matrix", async () => {
@@ -115,7 +115,7 @@ it("filters users and applications independently", async () => {
 });
 
 it("reauthenticates with the administrator password", async () => {
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<PermissionsView />);
     fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });

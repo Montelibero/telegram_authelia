@@ -36,11 +36,11 @@ beforeEach(() => mockedAxios.mockReset());
 
 it("loads the current administrator mutation capability", async () => {
     mockedAxios.mockResolvedValueOnce({
-        data: { data: { password_fresh: false, username: "admin" }, status: "OK" },
+        data: { data: { mutation_ready: false, username: "admin" }, status: "OK" },
         status: 200,
     });
 
-    await expect(getAdminStatus()).resolves.toEqual({ password_fresh: false, username: "admin" });
+    await expect(getAdminStatus()).resolves.toEqual({ mutation_ready: false, username: "admin" });
     expect(mockedAxios).toHaveBeenCalledWith({ method: "GET", url: "/api/admin" });
 });
 

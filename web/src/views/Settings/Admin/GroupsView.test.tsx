@@ -39,7 +39,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminGroups).mockResolvedValue([summary]);
     vi.mocked(getAdminGroup).mockResolvedValue(details);
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: true, username: "admin" });
 });
 
 it("loads groups and group details", async () => {
@@ -50,7 +50,7 @@ it("loads groups and group details", async () => {
 });
 
 it("reauthenticates before group mutations", async () => {
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<GroupsView currentUsername="admin" />);
     fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });

@@ -8,7 +8,7 @@ import (
 
 type adminStatusResponse struct {
 	Username      string `json:"username"`
-	PasswordFresh bool   `json:"password_fresh"`
+	MutationReady bool   `json:"mutation_ready"`
 }
 
 // AdminGET returns the safe capabilities of the current administrative session.
@@ -18,13 +18,11 @@ func AdminGET(ctx *middlewares.AutheliaCtx) {
 		ctx.ReplyUnauthorized()
 		return
 	}
-	now := ctx.GetClock().Now()
-	passwordProof := userSession.GetFirstFactorAuthn()
-	lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
-	passwordFresh := userSession.AuthenticationMethodRefs.UsernameAndPassword && lifespan > 0 && !passwordProof.IsZero() && !passwordProof.After(now) && now.Sub(passwordProof) <= lifespan
+	recentFirstFactor := middlewares.IsRecentFirstFactorAuthentication(ctx, &userSession)
+	mutationReady := recentFirstFactor && (ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode || userSession.AuthenticationMethodRefs.UsernameAndPassword)
 	if err = ctx.ReplyJSON(middlewares.OKResponse{Status: "OK", Data: adminStatusResponse{
 		Username:      userSession.Username,
-		PasswordFresh: passwordFresh,
+		MutationReady: mutationReady,
 	}}, fasthttp.StatusOK); err != nil {
 		ctx.Logger.WithError(err).Error("Error occurred encoding the admin session response.")
 		ctx.ReplyForbidden()

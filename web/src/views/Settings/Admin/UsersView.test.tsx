@@ -103,11 +103,11 @@ beforeEach(() => {
         { domain: "", group: "app:grafana", group_version: 1, name: "app:grafana", slug: "app:grafana", users: [] },
         { domain: "", group: "users", group_version: 1, name: "users", slug: "users", users: [] },
     ]);
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: true, username: "admin" });
 });
 
 it("shows only reauthentication controls for mutations while the administrator proof is stale", async () => {
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<UsersView currentUsername="admin" />);
 

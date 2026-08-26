@@ -93,7 +93,7 @@ export interface AdminUserSetupLink {
 
 export interface AdminStatus {
     username: string;
-    password_fresh: boolean;
+    mutation_ready: boolean;
 }
 
 export interface AdminRegistration {

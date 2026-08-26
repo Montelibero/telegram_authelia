@@ -63,6 +63,20 @@ func TestClientExchangeVerifiesTokenAndExtractsStableIdentity(t *testing.T) {
 	assert.Equal(t, flow.CodeVerifier, issuer.codeVerifier)
 }
 
+func TestClientExchangePreservesStringTelegramIDBeyondInt64(t *testing.T) {
+	issuer := newMockIssuer(t, tokenClaims{
+		subject:    "9568533088775932314",
+		telegramID: "9568533088775932314",
+		nonce:      "expected-nonce",
+	})
+	client := newTestClient(t, issuer)
+
+	identity, err := client.Exchange(context.Background(), "authorization-code", Flow{Nonce: "expected-nonce", CodeVerifier: "expected-verifier"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "9568533088775932314", identity.ProviderUserID)
+}
+
 func TestClientExchangeRejectsInvalidTokens(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -108,7 +122,7 @@ func newTestClient(t *testing.T, issuer *mockIssuer) *Client {
 
 type tokenClaims struct {
 	subject          string
-	telegramID       int64
+	telegramID       any
 	username         string
 	name             string
 	email            string

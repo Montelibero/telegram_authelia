@@ -2,10 +2,10 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -20,6 +20,26 @@ type Identity struct {
 	Name           string
 	Email          string
 	EmailVerified  bool
+}
+
+type userID string
+
+func (id *userID) UnmarshalJSON(data []byte) error {
+	var value string
+	if len(data) != 0 && data[0] == '"' {
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+	} else {
+		var number json.Number
+		if err := json.Unmarshal(data, &number); err != nil {
+			return err
+		}
+		value = number.String()
+	}
+
+	*id = userID(value)
+	return nil
 }
 
 // Client implements Telegram's OpenID Connect Authorization Code flow.
@@ -87,7 +107,7 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 
 	claims := struct {
 		Subject       string `json:"sub"`
-		TelegramID    int64  `json:"id"`
+		TelegramID    userID `json:"id"`
 		Nonce         string `json:"nonce"`
 		Username      string `json:"preferred_username"`
 		Name          string `json:"name"`
@@ -105,9 +125,9 @@ func (c *Client) Exchange(ctx context.Context, code string, flow Flow) (Identity
 	if claims.Subject == "" {
 		return Identity{}, errors.New("Telegram ID token subject is required")
 	}
-	if claims.TelegramID <= 0 {
+	if claims.TelegramID == "" || claims.TelegramID == "0" {
 		return Identity{}, errors.New("Telegram ID token user ID is required")
 	}
 
-	return Identity{ProviderUserID: strconv.FormatInt(claims.TelegramID, 10), Username: claims.Username, Name: claims.Name, Email: claims.Email, EmailVerified: claims.EmailVerified}, nil
+	return Identity{ProviderUserID: string(claims.TelegramID), Username: claims.Username, Name: claims.Name, Email: claims.Email, EmailVerified: claims.EmailVerified}, nil
 }
