@@ -47,6 +47,8 @@ export interface AdminUserSummary {
     password_enabled: boolean;
     primary_email: string;
     groups: string[];
+    provisioning_status?: "awaiting_first_login" | "awaiting_password_setup";
+    telegram_id?: string;
 }
 
 export interface AdminUserEmail {

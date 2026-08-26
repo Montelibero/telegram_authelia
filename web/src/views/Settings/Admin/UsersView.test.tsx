@@ -87,6 +87,7 @@ const details = {
         },
     ],
     session_epoch: 0,
+    telegram_id: "42",
 };
 
 beforeEach(() => {
@@ -153,8 +154,64 @@ it("creates a user", async () => {
     );
 });
 
+it("creates an email-only user and immediately shows a copyable password setup link", async () => {
+    vi.mocked(createAdminUser).mockResolvedValue({
+        ...details,
+        identities: [],
+        password_enabled: false,
+        provisioning_status: "awaiting_password_setup",
+        telegram_id: undefined,
+    });
+    vi.mocked(generateAdminUserSetupLink).mockResolvedValue({
+        expires_at: "2026-08-25T17:00:00Z",
+        setup_url: "https://auth.example/reset-password/step2?token=setup",
+    });
+    render(<UsersView currentUsername="admin" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create user" }));
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save new user" }));
+
+    expect(await screen.findByDisplayValue(/token=setup/)).toBeInTheDocument();
+    expect(createAdminUser).toHaveBeenCalledWith({
+        display_name: "",
+        email: "new@example.com",
+        groups: [],
+        telegram_id: "",
+        username: "",
+    });
+    expect(generateAdminUserSetupLink).toHaveBeenCalledWith("alice");
+});
+
+it("creates a Telegram-only user without requiring username or email", async () => {
+    vi.mocked(createAdminUser).mockResolvedValue({
+        ...details,
+        primary_email: "_telegram_987654321@pending.invalid",
+        provisioning_status: "awaiting_first_login",
+        telegram_id: "987654321",
+        username: "_telegram_987654321",
+    });
+    render(<UsersView currentUsername="admin" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create user" }));
+    fireEvent.change(screen.getByLabelText("Telegram ID"), { target: { value: "987654321" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "app:grafana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save new user" }));
+
+    await waitFor(() =>
+        expect(createAdminUser).toHaveBeenCalledWith({
+            display_name: "",
+            email: "",
+            groups: ["app:grafana"],
+            telegram_id: "987654321",
+            username: "",
+        }),
+    );
+    expect(generateAdminUserSetupLink).not.toHaveBeenCalled();
+});
+
 it("links a Telegram ID to an existing user", async () => {
-    const withoutIdentity = { ...details, identities: [] };
+    const withoutIdentity = { ...details, identities: [], telegram_id: undefined };
     vi.mocked(getAdminUser).mockResolvedValue(withoutIdentity);
     vi.mocked(linkAdminUserTelegram).mockResolvedValue({
         ...withoutIdentity,

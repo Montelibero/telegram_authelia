@@ -62,6 +62,61 @@ func TestMTLAdminUserLifecycle(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMTLPrimaryEmailRequired)
 }
 
+func TestMTLAdminUserCreatesTelegramPreauthorizationWithoutUsernameOrEmail(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	require.NoError(t, provider.ReconcileMTLGroups(ctx, []string{"app:grist"}))
+
+	details, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{
+		TelegramID: "987654321",
+		Groups:     []string{"app:grist"},
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, model.MTLUserStatusActive, details.Status)
+	assert.Equal(t, model.MTLUserStatusAwaitingFirstLogin, details.ProvisioningStatus)
+	assert.Equal(t, "987654321", details.TelegramID)
+	assert.Equal(t, []string{"app:grist"}, details.Groups)
+	assert.False(t, details.PasswordEnabled)
+	assert.NotEmpty(t, details.Username)
+	assert.NotEmpty(t, details.PrimaryEmail)
+}
+
+func TestMTLAdminUserDerivesUsernameForEmailOnlyPasswordSetup(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	details, err := provider.CreateMTLAdminUser(context.Background(), model.MTLAdminUserCreate{
+		Email: "new.user@example.com",
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "new.user", details.Username)
+	assert.Equal(t, "new.user@example.com", details.PrimaryEmail)
+	assert.Equal(t, model.MTLUserStatusAwaitingPassword, details.ProvisioningStatus)
+}
+
+func TestFinalizeMTLTelegramPreauthorizationUsesVerifiedTelegramProfile(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{TelegramID: "987654321"}, "")
+	require.NoError(t, err)
+
+	details, finalized, err := provider.FinalizeMTLTelegramPreauthorization(
+		ctx, "987654321", "bublik", "Bublik", "eurmtl.me",
+	)
+	require.NoError(t, err)
+	require.True(t, finalized)
+	assert.Equal(t, "bublik", details.User.Username)
+	assert.Equal(t, "Bublik", details.User.DisplayName)
+	assert.Equal(t, "bublik@eurmtl.me", details.PrimaryEmail)
+
+	admin, found, err := provider.LoadMTLAdminUser(ctx, "bublik")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, model.MTLUserStatusActive, admin.Status)
+	assert.Equal(t, "987654321", admin.TelegramID)
+	require.Len(t, admin.Identities, 1)
+	require.NotNil(t, admin.Identities[0].ProviderUsername)
+	assert.Equal(t, "bublik", *admin.Identities[0].ProviderUsername)
+}
+
 func TestMTLAdminUserConcurrentUpdateHasSingleWinner(t *testing.T) {
 	provider := newTestMTLUserProvider(t)
 	ctx := context.Background()
@@ -128,6 +183,25 @@ func TestMTLAdminUserConflictsRollbackAndIdentityUnlink(t *testing.T) {
 	var users int
 	require.NoError(t, provider.db.Get(&users, `SELECT COUNT(*) FROM mtl_users`))
 	assert.Equal(t, 1, users)
+}
+
+func TestLinkMTLAdminUserIdentityAtomicallyReplacesTelegramID(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := context.Background()
+	details, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{
+		Username: "bublik", Email: "bublik@example.com", TelegramID: "42",
+	}, "")
+	require.NoError(t, err)
+
+	details, err = provider.LinkMTLAdminUserIdentity(ctx, "bublik", model.MTLAdminIdentityLink{
+		ExpectedVersion: details.Version,
+		Provider:        "telegram",
+		ProviderUserID:  "43",
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "43", details.TelegramID)
+	assert.Equal(t, 1, details.SessionEpoch)
+	require.Len(t, details.Identities, 1)
 }
 
 func TestMTLAdminUserSessionEpochAndAuditActor(t *testing.T) {

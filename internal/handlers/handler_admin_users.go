@@ -90,6 +90,10 @@ func AdminUserPOST(ctx *middlewares.AutheliaCtx) {
 	if !adminAPIParse(ctx, &request) {
 		return
 	}
+	if strings.TrimSpace(request.Email) == "" && strings.TrimSpace(request.TelegramID) == "" {
+		ctx.ReplyBadRequest()
+		return
+	}
 	if request.TelegramID != "" && !validTelegramUserID(request.TelegramID) {
 		ctx.ReplyBadRequest()
 		return

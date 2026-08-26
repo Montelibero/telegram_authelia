@@ -20,7 +20,6 @@ import {
     ListItemText,
     MenuItem,
     Stack,
-    Switch,
     TextField,
     Typography,
 } from "@mui/material";
@@ -30,6 +29,7 @@ import { useNotifications } from "@contexts/NotificationsContext";
 import {
     AdminUserCreate,
     AdminUserDetails,
+    AdminUserSetupLink,
     AdminUserSummary,
     addAdminGroupUser,
     addAdminUserEmail,
@@ -154,8 +154,17 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                                 <ListItem disablePadding key={user.username}>
                                     <ListItemButton onClick={() => openUser(user.username).catch(console.error)}>
                                         <ListItemText
-                                            primary={user.username}
-                                            secondary={user.primary_email + " · " + user.status}
+                                            primary={
+                                                user.provisioning_status === "awaiting_first_login"
+                                                    ? `telegram: ${user.telegram_id}`
+                                                    : user.username
+                                            }
+                                            secondary={
+                                                (user.primary_email.endsWith("@pending.invalid")
+                                                    ? ""
+                                                    : user.primary_email + " · ") +
+                                                (user.provisioning_status || user.status)
+                                            }
                                         />
                                     </ListItemButton>
                                 </ListItem>
@@ -179,7 +188,6 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 close={() => setCreateOpen(false)}
                 created={async (details) => {
                     setSelected(details);
-                    setCreateOpen(false);
                     await loadUsers();
                 }}
             />
@@ -201,8 +209,7 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
     const [status, setStatus] = useState<AdminUserSummary["status"]>(details.status);
     const [confirmation, setConfirmation] = useState("");
     const [newEmail, setNewEmail] = useState("");
-    const [newEmailPrimary, setNewEmailPrimary] = useState(false);
-    const [telegramID, setTelegramID] = useState("");
+    const [telegramID, setTelegramID] = useState(details.telegram_id || "");
     const [setupLink, setSetupLink] = useState("");
     const [setupExpires, setSetupExpires] = useState("");
     const confirmed = confirmation === currentUsername;
@@ -234,8 +241,13 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
             <CardContent>
                 <Stack spacing={2}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="h5">{details.username}</Typography>
+                        <Typography variant="h5">
+                            {details.provisioning_status === "awaiting_first_login"
+                                ? `telegram: ${details.telegram_id}`
+                                : details.username}
+                        </Typography>
                         <Chip label={details.status} color={details.status === "active" ? "success" : "default"} />
+                        {details.provisioning_status ? <Chip label={details.provisioning_status} /> : null}
                         {details.password_enabled ? <Chip label={translate("Password enabled")} /> : null}
                     </Stack>
                     <TextField
@@ -311,20 +323,11 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
                             onChange={(event) => setNewEmail(event.target.value)}
                             fullWidth
                         />
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={newEmailPrimary}
-                                    onChange={(event) => setNewEmailPrimary(event.target.checked)}
-                                />
-                            }
-                            label={translate("Primary")}
-                        />
                         <Button
                             disabled={!newEmail}
                             onClick={() =>
                                 applyDetails(() =>
-                                    addAdminUserEmail(details.username, newEmail, details.version, newEmailPrimary),
+                                    addAdminUserEmail(details.username, newEmail, details.version, false),
                                 ).catch(console.error)
                             }
                         >
@@ -388,27 +391,25 @@ const UserDetails = function ({ applyDetails, availableGroups, currentUsername, 
                             </Button>
                         </Stack>
                     ))}
-                    {!details.identities.some((identity) => identity.provider === "telegram") ? (
-                        <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
-                            <TextField
-                                fullWidth
-                                label={translate("Telegram ID")}
-                                value={telegramID}
-                                slotProps={{ htmlInput: { inputMode: "numeric" } }}
-                                onChange={(event) => setTelegramID(event.target.value)}
-                            />
-                            <Button
-                                disabled={!telegramID.trim()}
-                                onClick={() =>
-                                    applyDetails(() =>
-                                        linkAdminUserTelegram(details.username, telegramID, details.version),
-                                    ).catch(console.error)
-                                }
-                            >
-                                {translate("Link Telegram")}
-                            </Button>
-                        </Stack>
-                    ) : null}
+                    <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
+                        <TextField
+                            fullWidth
+                            label={translate("Telegram ID")}
+                            value={telegramID}
+                            slotProps={{ htmlInput: { inputMode: "numeric" } }}
+                            onChange={(event) => setTelegramID(event.target.value)}
+                        />
+                        <Button
+                            disabled={!telegramID.trim() || telegramID.trim() === details.telegram_id}
+                            onClick={() =>
+                                applyDetails(() =>
+                                    linkAdminUserTelegram(details.username, telegramID, details.version),
+                                ).catch(console.error)
+                            }
+                        >
+                            {translate(details.telegram_id ? "Replace Telegram" : "Link Telegram")}
+                        </Button>
+                    </Stack>
                     <Divider />
                     <Button variant="outlined" onClick={() => generateLink().catch(console.error)}>
                         {translate("Generate setup link")}
@@ -441,7 +442,7 @@ interface CreateUserDialogProps {
 
 const CreateUserDialog = function ({ availableGroups, close, created, open }: CreateUserDialogProps) {
     const { t: translate } = useTranslation("settings");
-    const { createErrorNotification } = useNotifications();
+    const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [form, setForm] = useState<AdminUserCreate>({
         display_name: "",
         email: "",
@@ -450,19 +451,43 @@ const CreateUserDialog = function ({ availableGroups, close, created, open }: Cr
         username: "",
     });
     const [groups, setGroups] = useState<string[]>([]);
+    const [setupLink, setSetupLink] = useState<AdminUserSetupLink>();
 
     const submit = useCallback(async () => {
         try {
-            await created(await createAdminUser({ ...form, groups }));
+            const details = await createAdminUser({ ...form, groups });
+            await created(details);
+            if (!form.telegram_id?.trim()) {
+                setSetupLink(await generateAdminUserSetupLink(details.username));
+                return;
+            }
             setForm({ display_name: "", email: "", groups: [], telegram_id: "", username: "" });
             setGroups([]);
+            close();
         } catch {
             createErrorNotification(translate("Failed to create user; reauthenticate and try again"));
         }
-    }, [createErrorNotification, created, form, groups, translate]);
+    }, [close, createErrorNotification, created, form, groups, translate]);
+
+    const copySetupLink = useCallback(async () => {
+        if (!setupLink) return;
+        try {
+            await navigator.clipboard.writeText(setupLink.setup_url);
+            createSuccessNotification(translate("Setup link copied"));
+        } catch {
+            createErrorNotification(translate("Failed to copy setup link"));
+        }
+    }, [createErrorNotification, createSuccessNotification, setupLink, translate]);
+
+    const handleClose = useCallback(() => {
+        setForm({ display_name: "", email: "", groups: [], telegram_id: "", username: "" });
+        setGroups([]);
+        setSetupLink(undefined);
+        close();
+    }, [close]);
 
     return (
-        <Dialog open={open} onClose={close} fullWidth>
+        <Dialog open={open} onClose={handleClose} fullWidth>
             <DialogTitle>{translate("Create user")}</DialogTitle>
             <DialogContent>
                 <Stack spacing={2} sx={{ pt: 1 }}>
@@ -508,11 +533,30 @@ const CreateUserDialog = function ({ availableGroups, close, created, open }: Cr
                             />
                         ))}
                     </Stack>
+                    {setupLink ? (
+                        <Stack spacing={1}>
+                            <TextField
+                                label={translate("One-time setup link")}
+                                value={setupLink.setup_url}
+                                slotProps={{ htmlInput: { readOnly: true } }}
+                            />
+                            <Typography>
+                                {translate("Expires")}: {new Date(setupLink.expires_at).toLocaleString()}
+                            </Typography>
+                            <Button onClick={() => copySetupLink().catch(console.error)}>
+                                {translate("Copy link")}
+                            </Button>
+                        </Stack>
+                    ) : null}
                 </Stack>
             </DialogContent>
             <DialogActions>
-                <Button onClick={close}>{translate("Cancel")}</Button>
-                <Button variant="contained" onClick={() => submit().catch(console.error)}>
+                <Button onClick={handleClose}>{translate("Cancel")}</Button>
+                <Button
+                    variant="contained"
+                    disabled={Boolean(setupLink) || (!form.email.trim() && !form.telegram_id?.trim())}
+                    onClick={() => submit().catch(console.error)}
+                >
                     {translate("Save new user")}
                 </Button>
             </DialogActions>
