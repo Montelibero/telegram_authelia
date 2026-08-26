@@ -22,7 +22,7 @@ export function useAdminMutationLock() {
     const refresh = useCallback(async () => {
         try {
             const status = await getAdminStatus();
-            setUnlocked(status.password_fresh);
+            setUnlocked(status.mutation_ready);
         } catch {
             setUnlocked(false);
             createErrorNotification(translate("Failed to check administrator authentication"));

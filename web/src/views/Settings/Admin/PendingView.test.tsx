@@ -44,7 +44,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminRegistrations).mockResolvedValue([registration]);
     vi.mocked(getAdminRegistration).mockResolvedValue(registration);
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: true, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: true, username: "admin" });
 });
 
 it("loads pending registrations and editable details", async () => {
@@ -91,7 +91,7 @@ it("clears an actionable pending detail when switching status tabs", async () =>
 });
 
 it("reauthenticates before registration mutations", async () => {
-    vi.mocked(getAdminStatus).mockResolvedValue({ password_fresh: false, username: "admin" });
+    vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: false, username: "admin" });
     vi.mocked(postFirstFactorReauthenticate).mockResolvedValue(undefined);
     render(<PendingView />);
     fireEvent.change(await screen.findByLabelText("Administrator password"), { target: { value: "secret" } });
