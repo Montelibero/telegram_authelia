@@ -3,6 +3,8 @@
 .vscode/
 .github/_/
 .lefthook-local.yml
+.belief_map.sexp
+.belief_map_cache.json
 
 # Nodejs modules
 .pnpm-store/

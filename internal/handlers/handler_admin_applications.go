@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -72,7 +73,7 @@ func adminApplicationUserMutation(ctx *middlewares.AutheliaCtx, grant bool) {
 	if !adminAPIParse(ctx, &request) {
 		return
 	}
-	application, found := configuredApplication(ctx.Configuration.Applications, request.Slug)
+	application, found := configuredApplication(configuredPermissionApplications(ctx.Configuration.AccessControl.Rules, ctx.Configuration.Applications), request.Slug)
 	if !found {
 		adminAPIError(ctx, storage.ErrMTLGroupNotFound)
 		return
@@ -114,8 +115,9 @@ func loadAdminApplications(ctx *middlewares.AutheliaCtx, store adminApplicationS
 		versions[group.Name] = group.Version
 	}
 
-	response := make([]adminApplicationResponse, 0, len(ctx.Configuration.Applications))
-	for _, application := range ctx.Configuration.Applications {
+	applications := configuredPermissionApplications(ctx.Configuration.AccessControl.Rules, ctx.Configuration.Applications)
+	response := make([]adminApplicationResponse, 0, len(applications))
+	for _, application := range applications {
 		if !application.IsEnabled() {
 			continue
 		}
@@ -140,6 +142,39 @@ func loadAdminApplications(ctx *middlewares.AutheliaCtx, store adminApplicationS
 	}
 
 	return response, nil
+}
+
+func configuredPermissionApplications(rules []schema.AccessControlRule, legacy []schema.Application) []schema.Application {
+	if len(legacy) != 0 {
+		return legacy
+	}
+	seen := map[string]struct{}{}
+	groups := make([]string, 0)
+	for _, rule := range rules {
+		for _, subjects := range rule.Subjects {
+			for _, subject := range subjects {
+				subject = strings.TrimSpace(subject)
+				if !strings.HasPrefix(subject, "group:") {
+					continue
+				}
+				group := strings.TrimSpace(strings.TrimPrefix(subject, "group:"))
+				if group == "" || strings.EqualFold(group, "admins") {
+					continue
+				}
+				if _, found := seen[group]; found {
+					continue
+				}
+				seen[group] = struct{}{}
+				groups = append(groups, group)
+			}
+		}
+	}
+	sort.Strings(groups)
+	applications := make([]schema.Application, 0, len(groups))
+	for _, group := range groups {
+		applications = append(applications, schema.Application{Slug: group, Name: group, Group: group})
+	}
+	return applications
 }
 
 func configuredApplication(applications []schema.Application, slug string) (schema.Application, bool) {

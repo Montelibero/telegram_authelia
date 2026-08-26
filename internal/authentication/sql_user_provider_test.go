@@ -76,6 +76,23 @@ func TestSQLUserProviderStartupReconcilesEnabledApplicationGroups(t *testing.T) 
 	assert.Equal(t, []string{"app:grafana", "shared"}, store.reconciledGroups)
 }
 
+func TestSQLUserProviderStartupReconcilesAccessControlGroupsWithoutApplications(t *testing.T) {
+	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{}}
+	provider := NewSQLUserProvider(
+		&schema.AuthenticationBackendSQL{Password: schema.DefaultPasswordConfig},
+		store,
+		nil,
+		[]schema.AccessControlRule{
+			{Subjects: [][]string{{"group:app:grist"}}},
+			{Subjects: [][]string{{"group:team / weird:*", "user:bublik"}}},
+			{Subjects: [][]string{{"group:admins", "group:app:grist"}}},
+		},
+	)
+
+	require.NoError(t, provider.StartupCheck())
+	assert.Equal(t, []string{"app:grist", "team / weird:*"}, store.reconciledGroups)
+}
+
 func TestSQLUserProviderUpdateAndChangePassword(t *testing.T) {
 	store := &testSQLUserStore{users: map[string]model.MTLUserDetails{
 		"active":   {User: model.MTLUser{ID: 1, Username: "active", Status: model.MTLUserStatusActive, PasswordHash: sql.NullString{String: "$plaintext$old-password", Valid: true}, Version: 4, SessionEpoch: 2}, PrimaryEmail: "active@eurmtl.me"},
