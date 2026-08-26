@@ -86,6 +86,10 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	if result.RegistrationStatus != "" {
+		ctx.Logger.WithField("provider_user_id", result.Identity.ProviderUserID).
+			WithField("provider_username", result.Identity.Username).
+			WithField("registration_status", result.RegistrationStatus).
+			Info("Telegram identity requires registration approval")
 		portalURL := ctx.TemplateRootURL()
 		query := portalURL.Query()
 		query.Set("telegram_status", string(result.RegistrationStatus))
@@ -93,6 +97,9 @@ func TelegramCallbackGET(ctx *middlewares.AutheliaCtx) {
 		ctx.Redirect(portalURL.String(), fasthttp.StatusFound)
 		return
 	}
+	ctx.Logger.WithField("provider_user_id", result.Identity.ProviderUserID).
+		WithField("username", result.Details.User.Username).
+		Info("Telegram identity resolved to local user")
 
 	details := &authentication.UserDetails{
 		Username:     result.Details.User.Username,

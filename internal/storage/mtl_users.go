@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mattn/go-sqlite3"
@@ -26,6 +27,10 @@ var (
 
 // LinkMTLUserIdentity links a stable provider identity to an existing local user.
 func (p *SQLProvider) LinkMTLUserIdentity(ctx context.Context, username, provider, providerUserID, providerUsername string) (err error) {
+	provider = strings.TrimSpace(provider)
+	providerUserID = strings.TrimSpace(providerUserID)
+	providerUsername = strings.TrimSpace(providerUsername)
+
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin MTL identity link: %w", err)
@@ -75,8 +80,8 @@ func (p *SQLProvider) LoadMTLUserIdentity(ctx context.Context, username, provide
 // LoadMTLUserByIdentity resolves a stable provider identity to local user details.
 func (p *SQLProvider) LoadMTLUserByIdentity(ctx context.Context, provider, providerUserID string) (details model.MTLUserDetails, found bool, err error) {
 	var username string
-	query := p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_user_identities i ON i.user_id = u.id WHERE i.provider = ? AND i.provider_user_id = ?`)
-	if err = p.db.GetContext(ctx, &username, query, provider, providerUserID); err != nil {
+	query := p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_user_identities i ON i.user_id = u.id WHERE i.provider = ? AND TRIM(i.provider_user_id) = ?`)
+	if err = p.db.GetContext(ctx, &username, query, strings.TrimSpace(provider), strings.TrimSpace(providerUserID)); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return details, false, nil
 		}

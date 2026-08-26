@@ -113,7 +113,7 @@ func TestMTLUserIdentityLifecycle(t *testing.T) {
 		{Username: "other", DisplayName: "Other", Emails: []model.MTLUserImportEmail{{Email: "other@eurmtl.me", Primary: true}}},
 	}))
 
-	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "bublik", "telegram", "987654321", "bublik_tg"))
+	require.NoError(t, provider.LinkMTLUserIdentity(ctx, "bublik", "telegram", " 987654321\n", "bublik_tg"))
 	identity, found, err := provider.LoadMTLUserIdentity(ctx, "bublik", "telegram")
 	require.NoError(t, err)
 	require.True(t, found)
@@ -129,6 +129,13 @@ func TestMTLUserIdentityLifecycle(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMTLConflict)
 	err = provider.LinkMTLUserIdentity(ctx, "missing", "telegram", "1", "missing")
 	assert.ErrorIs(t, err, ErrMTLUserNotFound)
+
+	_, err = provider.db.ExecContext(ctx, `UPDATE mtl_user_identities SET provider_user_id = ' 987654321 ' WHERE provider = 'telegram'`)
+	require.NoError(t, err)
+	details, found, err = provider.LoadMTLUserByIdentity(ctx, "telegram", "987654321")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "bublik", details.User.Username)
 
 	require.NoError(t, provider.UnlinkMTLUserIdentity(ctx, "bublik", "telegram"))
 	_, found, err = provider.LoadMTLUserByIdentity(ctx, "telegram", "987654321")
