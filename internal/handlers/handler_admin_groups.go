@@ -15,6 +15,7 @@ import (
 type adminGroupStore interface {
 	ListMTLAdminGroups(context.Context) ([]model.MTLAdminGroupSummary, error)
 	LoadMTLAdminGroup(context.Context, string) (model.MTLAdminGroupDetails, bool, error)
+	LoadMTLAdminUser(context.Context, string) (model.MTLAdminUserDetails, bool, error)
 	CreateMTLAdminGroup(context.Context, string, string) (model.MTLAdminGroupDetails, error)
 	RenameMTLAdminGroup(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, []string, error)
 	DeleteMTLAdminGroup(context.Context, string, int, string) ([]string, error)
@@ -171,8 +172,35 @@ func adminGroupUserMutation(ctx *middlewares.AutheliaCtx, add bool) {
 	} else {
 		group, err = store.RemoveMTLAdminGroupUser(ctx, request.Name, request.Username, request.ExpectedVersion, actor)
 	}
+	if err == nil && request.Username == actor {
+		refreshAdminSessionAfterGroupMutation(ctx, store, actor)
+	}
 	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
 	adminAPIRespond(ctx, group, fasthttp.StatusOK, err)
+}
+
+func refreshAdminSessionAfterGroupMutation(ctx *middlewares.AutheliaCtx, store adminGroupStore, username string) {
+	details, found, err := store.LoadMTLAdminUser(ctx, username)
+	if err != nil || !found {
+		ctx.GetLogger().WithError(err).Error("Unable to refresh administrator session after group membership change")
+		return
+	}
+	userSession, err := ctx.GetSession()
+	if err != nil {
+		ctx.GetLogger().WithError(err).Error("Unable to load administrator session after group membership change")
+		return
+	}
+	emails := make([]string, len(details.Emails))
+	for i := range details.Emails {
+		emails[i] = details.Emails[i].Email
+	}
+	userSession.DisplayName = details.DisplayName
+	userSession.Groups = details.Groups
+	userSession.Emails = emails
+	userSession.SessionEpoch = &details.SessionEpoch
+	if err = ctx.SaveSession(userSession); err != nil {
+		ctx.GetLogger().WithError(err).Error("Unable to save administrator session after group membership change")
+	}
 }
 
 func adminApplicationGroupManaged(ctx *middlewares.AutheliaCtx, name string) bool {

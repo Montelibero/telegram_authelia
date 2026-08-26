@@ -32,7 +32,13 @@ func LogRequest(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 			fields["redirect_location"] = string(location)
 		}
 
-		logging.Logger().WithFields(fields).Info("HTTP request completed")
+		entry := logging.Logger().WithFields(fields)
+		if string(ctx.Method()) == fasthttp.MethodGet && string(ctx.Path()) == "/api/verify" && ctx.Response.StatusCode() == fasthttp.StatusOK {
+			entry.Debug("HTTP request completed")
+			return
+		}
+
+		entry.Info("HTTP request completed")
 	}
 }
 

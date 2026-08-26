@@ -107,3 +107,28 @@ func TestAdminGroupsProtectConfiguredApplicationGroupsFromStructuralChanges(t *t
 	require.NoError(t, err)
 	assert.False(t, found)
 }
+
+func TestAdminGroupUserMutationRefreshesCurrentAdministratorSession(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	group, err := store.CreateMTLAdminGroup(t.Context(), "app:grafana", "admin")
+	require.NoError(t, err)
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	epoch := 0
+	userSession.SessionEpoch = &epoch
+	userSession.FirstFactorAuthnTimestamp = 123
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	mock.Ctx.Request.SetBodyString(`{"name":"app:grafana","username":"admin","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminGroupUserPUT(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+
+	updated, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	require.NotNil(t, updated.SessionEpoch)
+	assert.Equal(t, 1, *updated.SessionEpoch)
+	assert.Equal(t, []string{"app:grafana"}, updated.Groups)
+	assert.Equal(t, int64(123), updated.FirstFactorAuthnTimestamp)
+	assert.True(t, updated.AuthenticationMethodRefs.External)
+}
