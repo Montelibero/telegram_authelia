@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -135,8 +136,18 @@ func TestMTLAdminUserSessionEpochAndAuditActor(t *testing.T) {
 
 	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com"}, "")
 	require.NoError(t, err)
+	hook := logrustest.NewGlobal()
+	t.Cleanup(hook.Reset)
 	target, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "target", Email: "target@example.com"}, "admin")
 	require.NoError(t, err)
+	require.Len(t, hook.Entries, 1)
+	auditLog := hook.LastEntry()
+	require.NotNil(t, auditLog)
+	assert.Equal(t, "Administrator audit event recorded", auditLog.Message)
+	assert.Equal(t, "user.created", auditLog.Data["audit_event"])
+	assert.Equal(t, "user", auditLog.Data["target_type"])
+	assert.Equal(t, "target", auditLog.Data["target_id"])
+	assert.NotNil(t, auditLog.Data["actor_user_id"])
 
 	target, err = provider.UpdateMTLAdminUser(ctx, "target", model.MTLAdminUserUpdate{ExpectedVersion: target.Version, Status: model.MTLUserStatusDisabled}, "admin")
 	require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/authelia/authelia/v4/internal/logging"
 	"github.com/authelia/authelia/v4/internal/model"
 )
 
@@ -342,6 +343,11 @@ func auditMTLAdmin(ctx context.Context, tx SQLXTx, actorID any, event, targetTyp
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_audit_events (actor_user_id, event_type, target_type, target_id) VALUES (?, ?, ?, ?)`), actorID, event, targetType, targetID); err != nil {
 		return fmt.Errorf("failed to audit MTL admin mutation: %w", err)
 	}
+	logging.Logger().WithField("actor_user_id", actorID).
+		WithField("audit_event", event).
+		WithField("target_type", targetType).
+		WithField("target_id", targetID).
+		Info("Administrator audit event recorded")
 	return nil
 }
 
