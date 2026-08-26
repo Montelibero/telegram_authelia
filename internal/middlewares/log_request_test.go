@@ -66,3 +66,47 @@ func TestLogRequestSkipsInfrastructureNoise(t *testing.T) {
 		})
 	}
 }
+
+func TestLogRequestDemotesSuccessfulForwardAuthChecksToDebug(t *testing.T) {
+	hook := logrustest.NewGlobal()
+	t.Cleanup(hook.Reset)
+	previousLevel := logrus.GetLevel()
+	t.Cleanup(func() { logrus.SetLevel(previousLevel) })
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("https://auth.example.com/api/verify")
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	logrus.SetLevel(logrus.InfoLevel)
+	LogRequest(func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(fasthttp.StatusOK)
+	})(ctx)
+	assert.Empty(t, hook.Entries)
+
+	logrus.SetLevel(logrus.DebugLevel)
+	LogRequest(func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(fasthttp.StatusOK)
+	})(ctx)
+	require.Len(t, hook.Entries, 1)
+	assert.Equal(t, logrus.DebugLevel, hook.LastEntry().Level)
+}
+
+func TestLogRequestKeepsFailedForwardAuthChecksAtInfo(t *testing.T) {
+	hook := logrustest.NewGlobal()
+	t.Cleanup(hook.Reset)
+	previousLevel := logrus.GetLevel()
+	logrus.SetLevel(logrus.InfoLevel)
+	t.Cleanup(func() { logrus.SetLevel(previousLevel) })
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("https://auth.example.com/api/verify")
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	LogRequest(func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+	})(ctx)
+
+	require.Len(t, hook.Entries, 1)
+	assert.Equal(t, logrus.InfoLevel, hook.LastEntry().Level)
+	assert.Equal(t, fasthttp.StatusUnauthorized, hook.LastEntry().Data["status_code"])
+}
