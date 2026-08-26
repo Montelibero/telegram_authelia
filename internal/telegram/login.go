@@ -32,6 +32,10 @@ type preauthorizedIdentityUserStore interface {
 	FinalizeMTLTelegramPreauthorization(ctx context.Context, providerUserID, providerUsername, displayName, generatedEmailDomain string) (model.MTLUserDetails, bool, error)
 }
 
+type telegramIdentityProfileStore interface {
+	SyncMTLTelegramIdentityProfile(ctx context.Context, providerUserID, providerUsername, generatedEmailDomain string) error
+}
+
 // LoginResult is a verified active local user and its state-bound return URL.
 type LoginResult struct {
 	Details            model.MTLUserDetails
@@ -121,6 +125,21 @@ func (s *LoginService) Complete(ctx context.Context, state, code string) (LoginR
 	}
 	if details.User.Status != model.MTLUserStatusActive {
 		return LoginResult{}, ErrUserDisabled
+	}
+	if profileStore, ok := s.users.(telegramIdentityProfileStore); ok {
+		domain := ""
+		if s.registrations != nil {
+			domain = s.registrations.generatedEmailDomain
+		}
+		if err = profileStore.SyncMTLTelegramIdentityProfile(ctx, identity.ProviderUserID, identity.Username, domain); err != nil {
+			return LoginResult{}, err
+		}
+		if details, found, err = s.users.LoadMTLUserByIdentity(ctx, "telegram", identity.ProviderUserID); err != nil {
+			return LoginResult{}, err
+		}
+		if !found {
+			return LoginResult{}, ErrIdentityNotLinked
+		}
 	}
 
 	return LoginResult{Details: details, Identity: identity, ReturnURL: flow.ReturnURL}, nil

@@ -117,6 +117,27 @@ func TestFinalizeMTLTelegramPreauthorizationUsesVerifiedTelegramProfile(t *testi
 	assert.Equal(t, "bublik", *admin.Identities[0].ProviderUsername)
 }
 
+func TestSyncMTLTelegramIdentityProfileStoresUsernameAndGeneratedEmail(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := t.Context()
+	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{
+		Username: "attid", Email: "attid0@gmail.com", TelegramID: "84131737",
+	}, "")
+	require.NoError(t, err)
+
+	require.NoError(t, provider.SyncMTLTelegramIdentityProfile(ctx, "84131737", "itolstov", "eurmtl.me"))
+
+	details, found, err := provider.LoadMTLAdminUser(ctx, "attid")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "attid0@gmail.com", details.PrimaryEmail)
+	require.Len(t, details.Emails, 2)
+	assert.Equal(t, []string{"attid0@gmail.com", "itolstov@eurmtl.me"}, []string{details.Emails[0].Email, details.Emails[1].Email})
+	require.Len(t, details.Identities, 1)
+	require.NotNil(t, details.Identities[0].ProviderUsername)
+	assert.Equal(t, "itolstov", *details.Identities[0].ProviderUsername)
+}
+
 func TestMTLAdminUserConcurrentUpdateHasSingleWinner(t *testing.T) {
 	provider := newTestMTLUserProvider(t)
 	ctx := context.Background()

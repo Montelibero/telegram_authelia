@@ -17,7 +17,7 @@ func TestLoginServiceBeginAndComplete(t *testing.T) {
 	states := NewStateStore(time.Minute, time.Now, bytes.NewReader(bytes.Repeat([]byte{0x31}, 512)), []byte("test secret"), newFakeStateReplayStore())
 	client := &fakeLoginClient{identity: Identity{ProviderUserID: "987654321", Username: "bublik_tg"}}
 	users := &fakeIdentityUserStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me", Groups: []string{"app:grafana"}}, found: true}
-	service := NewLoginService(client, states, users)
+	service := NewLoginServiceWithRegistration(client, states, users, NewRegistrationService(&fakeRegistrationStore{}, "eurmtl.me"))
 
 	authorizationURL, state, err := service.Begin(context.Background(), "/portal")
 	require.NoError(t, err)
@@ -28,6 +28,9 @@ func TestLoginServiceBeginAndComplete(t *testing.T) {
 	assert.Equal(t, "bublik", result.Details.User.Username)
 	assert.Equal(t, "/portal", result.ReturnURL)
 	assert.Equal(t, "987654321", users.providerUserID)
+	assert.Equal(t, "987654321", users.syncedProviderUserID)
+	assert.Equal(t, "bublik_tg", users.syncedProviderUsername)
+	assert.Equal(t, "eurmtl.me", users.syncedEmailDomain)
 
 	_, err = service.Complete(context.Background(), state, "code")
 	assert.ErrorIs(t, err, ErrInvalidState)
@@ -133,10 +136,13 @@ func (c *fakeLoginClient) Exchange(context.Context, string, Flow) (Identity, err
 }
 
 type fakeIdentityUserStore struct {
-	details        model.MTLUserDetails
-	found          bool
-	err            error
-	providerUserID string
+	details                model.MTLUserDetails
+	found                  bool
+	err                    error
+	providerUserID         string
+	syncedProviderUserID   string
+	syncedProviderUsername string
+	syncedEmailDomain      string
 }
 
 type fakePreauthorizedIdentityUserStore struct {
@@ -158,4 +164,11 @@ func (s *fakeIdentityUserStore) LoadMTLUserByIdentity(_ context.Context, provide
 	}
 	s.providerUserID = providerUserID
 	return s.details, s.found, s.err
+}
+
+func (s *fakeIdentityUserStore) SyncMTLTelegramIdentityProfile(_ context.Context, providerUserID, providerUsername, emailDomain string) error {
+	s.syncedProviderUserID = providerUserID
+	s.syncedProviderUsername = providerUsername
+	s.syncedEmailDomain = emailDomain
+	return s.err
 }

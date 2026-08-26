@@ -64,8 +64,8 @@ WHERE i.provider_user_id = ?`)
 			return details, false, mapMTLConflict("failed to finalize Telegram preauthorization email", err)
 		}
 	}
-	if _, err = tx.ExecContext(ctx, tx.Rebind(`UPDATE mtl_user_identities SET provider_username = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND provider = 'telegram'`), username, current.ID); err != nil {
-		return details, false, fmt.Errorf("failed to finalize Telegram preauthorization identity: %w", err)
+	if err = syncMTLTelegramIdentityProfile(ctx, tx, current.ID, username, generatedEmailDomain); err != nil {
+		return details, false, err
 	}
 	if err = auditMTLAdmin(ctx, tx, nil, "user.activated", "user", username); err != nil {
 		return details, false, err
