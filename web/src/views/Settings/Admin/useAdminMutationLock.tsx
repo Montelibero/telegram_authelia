@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Button, Stack, TextField } from "@mui/material";
+import { Alert, Button, CircularProgress, Stack, TextField } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
+import PasskeyIcon from "@components/PasskeyIcon";
 import { useNotifications } from "@contexts/NotificationsContext";
+import { AssertionResult } from "@models/WebAuthn";
 import { getAdminStatus } from "@services/Admin";
 import { postFirstFactorReauthenticate } from "@services/Password";
+import { getWebAuthnOptions, getWebAuthnResult, postWebAuthnReauthenticateResponse } from "@services/WebAuthn";
 
 export function isAdminMutationAuthenticationError(error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status;
@@ -18,6 +21,7 @@ export function useAdminMutationLock() {
     const [unlocked, setUnlocked] = useState(false);
     const [password, setPassword] = useState("");
     const [checking, setChecking] = useState(true);
+    const [passkeyLoading, setPasskeyLoading] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
@@ -47,6 +51,35 @@ export function useAdminMutationLock() {
         }
     }, [createErrorNotification, createSuccessNotification, password, translate]);
 
+    const reauthenticatePasskey = useCallback(async () => {
+        setPasskeyLoading(true);
+
+        try {
+            const optionsStatus = await getWebAuthnOptions();
+            if (optionsStatus.status !== 200 || optionsStatus.options == null) {
+                throw new Error("Passkey challenge unavailable");
+            }
+
+            const result = await getWebAuthnResult(optionsStatus.options);
+            if (result.result !== AssertionResult.Success || result.response == null) {
+                throw new Error("Passkey assertion failed");
+            }
+
+            const response = await postWebAuthnReauthenticateResponse(result.response);
+            if (response.status !== 200 || response.data.status !== "OK") {
+                throw new Error("Passkey reauthentication rejected");
+            }
+
+            setUnlocked(true);
+            createSuccessNotification(translate("Administrator actions unlocked"));
+        } catch {
+            setUnlocked(false);
+            createErrorNotification(translate("Passkey reauthentication failed"));
+        } finally {
+            setPasskeyLoading(false);
+        }
+    }, [createErrorNotification, createSuccessNotification, translate]);
+
     const lock = useCallback(() => setUnlocked(false), []);
 
     const controls = unlocked ? null : (
@@ -72,6 +105,15 @@ export function useAdminMutationLock() {
                             onClick={() => reauthenticate().catch(console.error)}
                         >
                             {translate("Reauthenticate")}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            startIcon={<PasskeyIcon />}
+                            endIcon={passkeyLoading ? <CircularProgress size={20} /> : null}
+                            disabled={passkeyLoading}
+                            onClick={() => reauthenticatePasskey().catch(console.error)}
+                        >
+                            {translate("Reauthenticate with a passkey")}
                         </Button>
                     </>
                 ) : null}

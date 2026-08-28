@@ -86,6 +86,13 @@ func (s *UserSession) SetPasswordReauthenticate(now time.Time, details *authenti
 	s.AuthenticationMethodRefs.UsernameAndPassword = true
 }
 
+// SetPasskeyReauthenticate records a successful passkey proof without replacing the original login method.
+func (s *UserSession) SetPasskeyReauthenticate(now time.Time, hardware, userPresence, userVerified bool) {
+	s.FirstFactorAuthnTimestamp = now.Unix()
+	s.LastActivity = now.Unix()
+	s.setWebAuthn(hardware, userPresence, userVerified)
+}
+
 // SetTwoFactorTOTP sets the relevant TOTP AMR's and sets the factor to 2FA.
 func (s *UserSession) SetTwoFactorTOTP(now time.Time) {
 	s.setTwoFactor(now)
