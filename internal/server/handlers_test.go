@@ -412,6 +412,49 @@ func TestHandlerMainAdminRouteWithBasePathAndMethodRestriction(t *testing.T) {
 	}
 }
 
+func TestHandlerMainSetupLinkRoutesWhenPasswordResetDisabled(t *testing.T) {
+	provider, err := templates.New(templates.Config{})
+	require.NoError(t, err)
+	require.NoError(t, provider.LoadTemplatedAssets(assets))
+
+	config := &schema.Configuration{
+		Server: schema.Server{
+			Address:   schema.DefaultServerConfiguration.Address,
+			Endpoints: schema.DefaultServerConfiguration.Endpoints,
+		},
+		AuthenticationBackend: schema.AuthenticationBackend{
+			PasswordReset: schema.AuthenticationBackendPasswordReset{Disable: true},
+		},
+	}
+	providers := middlewares.NewProvidersBasic()
+	providers.Random = random.NewMathematical()
+	providers.Templates = provider
+	providers.SessionProvider = session.NewProvider(config.Session, nil)
+
+	handler, err := handlerMain(t.Context(), config, providers)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		method   string
+		uri      string
+		expected int
+	}{
+		{method: fasthttp.MethodGet, uri: "/api/reset-password/identity/finish", expected: fasthttp.StatusMethodNotAllowed},
+		{method: fasthttp.MethodGet, uri: "/api/reset-password", expected: fasthttp.StatusMethodNotAllowed},
+		{method: fasthttp.MethodGet, uri: "/api/reset-password/identity/start", expected: fasthttp.StatusNotFound},
+		{method: fasthttp.MethodDelete, uri: "/api/reset-password", expected: fasthttp.StatusMethodNotAllowed},
+	} {
+		var ctx fasthttp.RequestCtx
+		ctx.Request.Header.SetMethod(tc.method)
+		ctx.Request.Header.SetHost("login.example.com")
+		ctx.Request.SetRequestURI(tc.uri)
+
+		handler(&ctx)
+
+		assert.Equal(t, tc.expected, ctx.Response.StatusCode(), tc.uri)
+	}
+}
+
 type timeoutError struct{}
 
 func (e *timeoutError) Error() string { return "i/o timeout" }
