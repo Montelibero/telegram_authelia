@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/valyala/fasthttp"
 
@@ -21,6 +22,8 @@ type adminGroupStore interface {
 	DeleteMTLAdminGroup(context.Context, string, int, string) ([]string, error)
 	AddMTLAdminGroupUser(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
 	RemoveMTLAdminGroupUser(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
+	AddMTLAdminGroupManager(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
+	RemoveMTLAdminGroupManager(context.Context, string, string, int, string) (model.MTLAdminGroupDetails, error)
 }
 
 type adminGroupRequest struct {
@@ -44,6 +47,16 @@ func AdminGroupsGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 	groups, err := store.ListMTLAdminGroups(ctx)
+	scope := loadAdminAccessScope(ctx)
+	if !scope.Full {
+		filtered := groups[:0]
+		for _, group := range groups {
+			if scope.managesGroup(group.Name) {
+				filtered = append(filtered, group)
+			}
+		}
+		groups = filtered
+	}
 	for i := range groups {
 		groups[i].Managed = adminApplicationGroupManaged(ctx, groups[i].Name)
 	}
@@ -51,12 +64,16 @@ func AdminGroupsGET(ctx *middlewares.AutheliaCtx) {
 }
 
 func AdminGroupGET(ctx *middlewares.AutheliaCtx) {
+	name := string(ctx.QueryArgs().Peek("name"))
+	if !requireAdminManagedGroup(ctx, name) {
+		return
+	}
 	store, ok := ctx.Providers.StorageProvider.(adminGroupStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin group storage is unavailable"))
 		return
 	}
-	group, found, err := store.LoadMTLAdminGroup(ctx, string(ctx.QueryArgs().Peek("name")))
+	group, found, err := store.LoadMTLAdminGroup(ctx, name)
 	if err == nil && !found {
 		err = storage.ErrMTLGroupNotFound
 	}
@@ -65,6 +82,9 @@ func AdminGroupGET(ctx *middlewares.AutheliaCtx) {
 }
 
 func AdminGroupPOST(ctx *middlewares.AutheliaCtx) {
+	if !requireAdminFull(ctx) {
+		return
+	}
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
 		return
@@ -80,6 +100,9 @@ func AdminGroupPOST(ctx *middlewares.AutheliaCtx) {
 }
 
 func AdminGroupPATCH(ctx *middlewares.AutheliaCtx) {
+	if !requireAdminFull(ctx) {
+		return
+	}
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
 		return
@@ -112,6 +135,9 @@ func AdminGroupPATCH(ctx *middlewares.AutheliaCtx) {
 }
 
 func AdminGroupDELETE(ctx *middlewares.AutheliaCtx) {
+	if !requireAdminFull(ctx) {
+		return
+	}
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
 		return
@@ -150,9 +176,48 @@ func AdminGroupUserDELETE(ctx *middlewares.AutheliaCtx) {
 	adminGroupUserMutation(ctx, false)
 }
 
+func AdminGroupManagerPUT(ctx *middlewares.AutheliaCtx) {
+	adminGroupManagerMutation(ctx, true)
+}
+
+func AdminGroupManagerDELETE(ctx *middlewares.AutheliaCtx) {
+	adminGroupManagerMutation(ctx, false)
+}
+
+func adminGroupManagerMutation(ctx *middlewares.AutheliaCtx, add bool) {
+	if !requireAdminFull(ctx) {
+		return
+	}
+	var request adminGroupRequest
+	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	if strings.EqualFold(request.Name, "admins") {
+		ctx.ReplyForbidden()
+		return
+	}
+	store, ok := ctx.Providers.StorageProvider.(adminGroupStore)
+	if !ok {
+		adminAPIError(ctx, errors.New("admin group storage is unavailable"))
+		return
+	}
+	var group model.MTLAdminGroupDetails
+	var err error
+	if add {
+		group, err = store.AddMTLAdminGroupManager(ctx, request.Name, request.Username, request.ExpectedVersion, adminAPIActor(ctx))
+	} else {
+		group, err = store.RemoveMTLAdminGroupManager(ctx, request.Name, request.Username, request.ExpectedVersion, adminAPIActor(ctx))
+	}
+	group.Managed = adminApplicationGroupManaged(ctx, group.Name)
+	adminAPIRespond(ctx, group, fasthttp.StatusOK, err)
+}
+
 func adminGroupUserMutation(ctx *middlewares.AutheliaCtx, add bool) {
 	var request adminGroupRequest
 	if !adminAPIParse(ctx, &request) {
+		return
+	}
+	if !requireAdminManagedGroup(ctx, request.Name) {
 		return
 	}
 	actor := adminAPIActor(ctx)

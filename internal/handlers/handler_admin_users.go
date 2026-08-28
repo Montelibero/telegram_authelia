@@ -98,6 +98,10 @@ func AdminUserPOST(ctx *middlewares.AutheliaCtx) {
 		ctx.ReplyBadRequest()
 		return
 	}
+	if !loadAdminAccessScope(ctx).managesAll(request.Groups) {
+		ctx.ReplyForbidden()
+		return
+	}
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
@@ -127,6 +131,19 @@ func AdminUserPATCH(ctx *middlewares.AutheliaCtx) {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
 		return
 	}
+	current, found, err := store.LoadMTLAdminUser(ctx, request.Username)
+	if err != nil || !found {
+		if err == nil {
+			err = storage.ErrMTLUserNotFound
+		}
+		adminAPIError(ctx, err)
+		return
+	}
+	scope := loadAdminAccessScope(ctx)
+	if !scope.managesAny(current.Groups) || (request.Status != current.Status && !scope.managesAll(current.Groups)) {
+		ctx.ReplyForbidden()
+		return
+	}
 	details, err := store.UpdateMTLAdminUser(ctx, request.Username, model.MTLAdminUserUpdate{ExpectedVersion: request.ExpectedVersion, DisplayName: request.DisplayName, Status: request.Status}, actor)
 	adminAPIRespond(ctx, details, fasthttp.StatusOK, err)
 }
@@ -139,6 +156,9 @@ func AdminUserEmailPOST(ctx *middlewares.AutheliaCtx) {
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, request.Primary) {
 		return
 	}
 	details, err := store.AddMTLAdminUserEmail(ctx, request.Username, model.MTLAdminEmailCreate{ExpectedVersion: request.ExpectedVersion, Email: request.Email, Primary: request.Primary}, adminAPIActor(ctx))
@@ -155,6 +175,9 @@ func AdminUserEmailPrimaryPUT(ctx *middlewares.AutheliaCtx) {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
 		return
 	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, true) {
+		return
+	}
 	details, err := store.SetMTLAdminPrimaryEmail(ctx, request.Username, request.Email, request.ExpectedVersion, adminAPIActor(ctx))
 	adminAPIRespond(ctx, details, fasthttp.StatusOK, err)
 }
@@ -167,6 +190,9 @@ func AdminUserEmailDELETE(ctx *middlewares.AutheliaCtx) {
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, false) {
 		return
 	}
 	details, err := store.DeleteMTLAdminUserEmail(ctx, request.Username, request.Email, request.ExpectedVersion, adminAPIActor(ctx))
@@ -182,6 +208,9 @@ func AdminUserIdentityDELETE(ctx *middlewares.AutheliaCtx) {
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, true) {
 		return
 	}
 	if request.Username == actor {
@@ -224,6 +253,9 @@ func AdminUserIdentityPUT(ctx *middlewares.AutheliaCtx) {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
 		return
 	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, true) {
+		return
+	}
 	details, err := store.LinkMTLAdminUserIdentity(ctx, request.Username, model.MTLAdminIdentityLink{
 		ExpectedVersion: request.ExpectedVersion,
 		Provider:        request.Provider,
@@ -241,6 +273,9 @@ func AdminUserSetupLinkPOST(ctx *middlewares.AutheliaCtx) {
 	store, ok := ctx.Providers.StorageProvider.(adminUserStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin user storage is unavailable"))
+		return
+	}
+	if !requireAdminUserProfileScope(ctx, store, request.Username, true) {
 		return
 	}
 	_, found, err := store.LoadMTLAdminUser(ctx, request.Username)
@@ -291,4 +326,25 @@ func AdminUserSetupLinkPOST(ctx *middlewares.AutheliaCtx) {
 	setupURL.RawQuery = query.Encode()
 	ctx.Response.Header.Set("Cache-Control", "no-store")
 	adminAPIRespond(ctx, adminUserSetupLinkResponse{SetupURL: setupURL.String(), ExpiresAt: expiresAt}, fasthttp.StatusOK, nil)
+}
+
+func requireAdminUserProfileScope(ctx *middlewares.AutheliaCtx, store adminUserStore, username string, exclusive bool) bool {
+	details, found, err := store.LoadMTLAdminUser(ctx, username)
+	if err != nil || !found {
+		if err == nil {
+			err = storage.ErrMTLUserNotFound
+		}
+		adminAPIError(ctx, err)
+		return false
+	}
+	scope := loadAdminAccessScope(ctx)
+	allowed := scope.managesAny(details.Groups)
+	if exclusive {
+		allowed = scope.managesAll(details.Groups)
+	}
+	if !allowed {
+		ctx.ReplyForbidden()
+		return false
+	}
+	return true
 }

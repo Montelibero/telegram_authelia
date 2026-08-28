@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,7 +12,18 @@ import (
 	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/mocks"
+	"github.com/authelia/authelia/v4/internal/storage"
 )
+
+type managerDelegationStorage struct {
+	storage.Provider
+	groups []string
+	err    error
+}
+
+func (s managerDelegationStorage) ListMTLManagedGroups(context.Context, string) ([]string, error) {
+	return s.groups, s.err
+}
 
 func TestRequireAdminRejectsRevokedMTLSession(t *testing.T) {
 	mock := mocks.NewMockAutheliaCtx(t)
@@ -58,6 +70,40 @@ func TestRequireAdmin(t *testing.T) {
 			}
 
 			middlewares.RequireAdmin(NilHandler)(mock.Ctx)
+
+			assert.Equal(t, tc.expected, mock.Ctx.Response.StatusCode())
+		})
+	}
+}
+
+func TestRequireAdminAccess(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		groups   []string
+		managed  []string
+		expected int
+	}{
+		{name: "anonymous", expected: fasthttp.StatusUnauthorized},
+		{name: "ordinary user", username: john, groups: []string{"users"}, expected: fasthttp.StatusForbidden},
+		{name: "delegated manager", username: john, groups: []string{"users"}, managed: []string{"app:grafana"}, expected: fasthttp.StatusOK},
+		{name: "full admin", username: john, groups: []string{"admins"}, expected: fasthttp.StatusOK},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+			mock.Ctx.Providers.StorageProvider = managerDelegationStorage{Provider: mock.StorageMock, groups: tc.managed}
+			if tc.username != "" {
+				userSession, err := mock.Ctx.GetSession()
+				require.NoError(t, err)
+				userSession.Username = tc.username
+				userSession.Groups = tc.groups
+				userSession.AuthenticationMethodRefs.External = true
+				require.NoError(t, mock.Ctx.SaveSession(userSession))
+			}
+
+			middlewares.RequireAdminAccess(NilHandler)(mock.Ctx)
 
 			assert.Equal(t, tc.expected, mock.Ctx.Response.StatusCode())
 		})

@@ -207,6 +207,7 @@ type StateResponse struct {
 	AuthenticationLevel   authentication.Level `json:"authentication_level"`
 	FactorKnowledge       bool                 `json:"factor_knowledge"`
 	Administrator         bool                 `json:"administrator,omitempty"`
+	Manager               bool                 `json:"manager,omitempty"`
 	DefaultRedirectionURL string               `json:"default_redirection_url,omitempty"`
 }
 

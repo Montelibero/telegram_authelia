@@ -11,6 +11,7 @@ import (
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/middlewares"
+	"github.com/authelia/authelia/v4/internal/model"
 )
 
 func TestAdminGroupsAPIWorkflowAndWarnings(t *testing.T) {
@@ -128,7 +129,28 @@ func TestAdminGroupUserMutationRefreshesCurrentAdministratorSession(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, updated.SessionEpoch)
 	assert.Equal(t, 1, *updated.SessionEpoch)
-	assert.Equal(t, []string{"app:grafana"}, updated.Groups)
+	assert.Equal(t, []string{"app:grafana", "admins"}, updated.Groups)
 	assert.Equal(t, int64(123), updated.FirstFactorAuthnTimestamp)
 	assert.True(t, updated.AuthenticationMethodRefs.External)
+}
+
+func TestAdminGroupManagerMutation(t *testing.T) {
+	mock, store := newAdminAPITestContext(t)
+	_, err := store.CreateMTLAdminUser(t.Context(), model.MTLAdminUserCreate{Username: "manager", Email: "manager@example.com"}, "admin")
+	require.NoError(t, err)
+	group, err := store.CreateMTLAdminGroup(t.Context(), "app:grafana", "admin")
+	require.NoError(t, err)
+
+	mock.Ctx.Request.SetBodyString(`{"name":"app:grafana","username":"manager","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminGroupManagerPUT(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.Contains(t, string(mock.Ctx.Response.Body()), `"managers":["manager"]`)
+
+	group, _, err = store.LoadMTLAdminGroup(t.Context(), group.Name)
+	require.NoError(t, err)
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetBodyString(`{"name":"app:grafana","username":"manager","expected_version":` + jsonInt(group.Version) + `}`)
+	AdminGroupManagerDELETE(mock.Ctx)
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	assert.Contains(t, string(mock.Ctx.Response.Body()), `"managers":[]`)
 }

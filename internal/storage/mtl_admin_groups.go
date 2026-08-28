@@ -59,9 +59,11 @@ func (p *SQLProvider) LoadMTLAdminGroup(ctx context.Context, name string) (detai
 		}
 		return details, false, fmt.Errorf("failed to load MTL admin group: %w", err)
 	}
+	details.Users = []string{}
 	if err = p.db.SelectContext(ctx, &details.Users, p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_group_memberships gm ON gm.user_id = u.id INNER JOIN mtl_groups g ON g.id = gm.group_id WHERE g.name = ? ORDER BY u.username`), name); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin group users: %w", err)
 	}
+	details.Managers = []string{}
 	if err = p.db.SelectContext(ctx, &details.Managers, p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_group_managers gm ON gm.user_id = u.id INNER JOIN mtl_groups g ON g.id = gm.group_id WHERE g.name = ? ORDER BY u.username`), name); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin group managers: %w", err)
 	}
@@ -71,7 +73,7 @@ func (p *SQLProvider) LoadMTLAdminGroup(ctx context.Context, name string) (detai
 // ListMTLManagedGroups returns the groups explicitly delegated to a user.
 func (p *SQLProvider) ListMTLManagedGroups(ctx context.Context, username string) (groups []string, err error) {
 	groups = []string{}
-	query := p.db.Rebind(`SELECT g.name FROM mtl_groups g INNER JOIN mtl_group_managers gm ON gm.group_id = g.id INNER JOIN mtl_users u ON u.id = gm.user_id WHERE u.username = ? ORDER BY g.name`)
+	query := p.db.Rebind(`SELECT g.name FROM mtl_groups g INNER JOIN mtl_group_managers gm ON gm.group_id = g.id INNER JOIN mtl_users u ON u.id = gm.user_id WHERE u.username = ? AND LOWER(g.name) <> 'admins' ORDER BY g.name`)
 	if err = p.db.SelectContext(ctx, &groups, query, username); err != nil {
 		return nil, fmt.Errorf("failed to list MTL managed groups: %w", err)
 	}
