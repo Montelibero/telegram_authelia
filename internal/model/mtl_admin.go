@@ -80,7 +80,8 @@ type MTLAdminGroupSummary struct {
 // MTLAdminGroupDetails is the safe administrative detail representation of a group.
 type MTLAdminGroupDetails struct {
 	MTLAdminGroupSummary
-	Users []string `json:"users"`
+	Users    []string `json:"users"`
+	Managers []string `json:"managers"`
 }
 
 // MTLAdminGroupCreate contains a new unrestricted group name.

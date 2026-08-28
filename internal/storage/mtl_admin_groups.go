@@ -62,7 +62,20 @@ func (p *SQLProvider) LoadMTLAdminGroup(ctx context.Context, name string) (detai
 	if err = p.db.SelectContext(ctx, &details.Users, p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_group_memberships gm ON gm.user_id = u.id INNER JOIN mtl_groups g ON g.id = gm.group_id WHERE g.name = ? ORDER BY u.username`), name); err != nil {
 		return details, false, fmt.Errorf("failed to load MTL admin group users: %w", err)
 	}
+	if err = p.db.SelectContext(ctx, &details.Managers, p.db.Rebind(`SELECT u.username FROM mtl_users u INNER JOIN mtl_group_managers gm ON gm.user_id = u.id INNER JOIN mtl_groups g ON g.id = gm.group_id WHERE g.name = ? ORDER BY u.username`), name); err != nil {
+		return details, false, fmt.Errorf("failed to load MTL admin group managers: %w", err)
+	}
 	return details, true, nil
+}
+
+// ListMTLManagedGroups returns the groups explicitly delegated to a user.
+func (p *SQLProvider) ListMTLManagedGroups(ctx context.Context, username string) (groups []string, err error) {
+	groups = []string{}
+	query := p.db.Rebind(`SELECT g.name FROM mtl_groups g INNER JOIN mtl_group_managers gm ON gm.group_id = g.id INNER JOIN mtl_users u ON u.id = gm.user_id WHERE u.username = ? ORDER BY g.name`)
+	if err = p.db.SelectContext(ctx, &groups, query, username); err != nil {
+		return nil, fmt.Errorf("failed to list MTL managed groups: %w", err)
+	}
+	return groups, nil
 }
 
 // CreateMTLAdminGroup creates a group without restricting its name format.
@@ -172,6 +185,69 @@ func (p *SQLProvider) AddMTLAdminGroupUser(ctx context.Context, name, username s
 // RemoveMTLAdminGroupUser removes one membership and increments the group version.
 func (p *SQLProvider) RemoveMTLAdminGroupUser(ctx context.Context, name, username string, expectedVersion int, actor string) (model.MTLAdminGroupDetails, error) {
 	return p.mutateMTLAdminGroupUser(ctx, name, username, expectedVersion, actor, false)
+}
+
+// AddMTLAdminGroupManager delegates management of a group to a user.
+func (p *SQLProvider) AddMTLAdminGroupManager(ctx context.Context, name, username string, expectedVersion int, actor string) (model.MTLAdminGroupDetails, error) {
+	return p.mutateMTLAdminGroupManager(ctx, name, username, expectedVersion, actor, true)
+}
+
+// RemoveMTLAdminGroupManager revokes management of a group from a user.
+func (p *SQLProvider) RemoveMTLAdminGroupManager(ctx context.Context, name, username string, expectedVersion int, actor string) (model.MTLAdminGroupDetails, error) {
+	return p.mutateMTLAdminGroupManager(ctx, name, username, expectedVersion, actor, false)
+}
+
+func (p *SQLProvider) mutateMTLAdminGroupManager(ctx context.Context, name, username string, expectedVersion int, actor string, add bool) (details model.MTLAdminGroupDetails, err error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return details, fmt.Errorf("failed to begin MTL admin group manager mutation: %w", err)
+	}
+	defer rollbackMTLAdmin(tx, &err)
+	groupID, err := loadMTLAdminGroupVersion(ctx, tx, name, expectedVersion)
+	if err != nil {
+		return details, err
+	}
+	var userID int64
+	if err = tx.GetContext(ctx, &userID, tx.Rebind(`SELECT id FROM mtl_users WHERE username = ?`), username); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return details, ErrMTLUserNotFound
+		}
+		return details, fmt.Errorf("failed to load MTL admin group manager: %w", err)
+	}
+	actorID, err := loadOptionalMTLActor(ctx, tx, actor)
+	if err != nil {
+		return details, err
+	}
+	event := "group.manager_added"
+	if add {
+		if _, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO mtl_group_managers (user_id, group_id) VALUES (?, ?)`), userID, groupID); err != nil {
+			return details, mapMTLConflict("failed to add MTL admin group manager", err)
+		}
+	} else {
+		event = "group.manager_removed"
+		result, execErr := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM mtl_group_managers WHERE user_id = ? AND group_id = ?`), userID, groupID)
+		if execErr != nil {
+			return details, fmt.Errorf("failed to remove MTL admin group manager: %w", execErr)
+		}
+		rows, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return details, fmt.Errorf("failed to check MTL admin group manager removal: %w", rowsErr)
+		}
+		if rows != 1 {
+			return details, ErrMTLMembershipNotFound
+		}
+	}
+	if err = bumpMTLAdminGroupVersion(ctx, tx, groupID, expectedVersion); err != nil {
+		return details, err
+	}
+	if err = auditMTLAdmin(ctx, tx, actorID, event, "group", name); err != nil {
+		return details, err
+	}
+	if err = tx.Commit(); err != nil {
+		return details, fmt.Errorf("failed to commit MTL admin group manager mutation: %w", err)
+	}
+	details, _, err = p.LoadMTLAdminGroup(ctx, name)
+	return details, err
 }
 
 func (p *SQLProvider) mutateMTLAdminGroupUser(ctx context.Context, name, username string, expectedVersion int, actor string, add bool) (details model.MTLAdminGroupDetails, err error) {
