@@ -56,6 +56,7 @@ export const AdminUserSetupLinkPath = basePath + "/api/admin/users/setup-link";
 export const AdminGroupsPath = basePath + "/api/admin/groups";
 export const AdminGroupPath = basePath + "/api/admin/group";
 export const AdminGroupUserPath = basePath + "/api/admin/group/user";
+export const AdminGroupManagerPath = basePath + "/api/admin/group/manager";
 export const AdminRegistrationsPath = basePath + "/api/admin/registrations";
 export const AdminRegistrationPath = basePath + "/api/admin/registration";
 export const AdminRegistrationApprovePath = basePath + "/api/admin/registration/approve";

@@ -1,12 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
+    addAdminGroupManager,
     addAdminGroupUser,
     createAdminGroup,
     deleteAdminGroup,
     getAdminGroup,
     getAdminGroups,
     getAdminStatus,
+    removeAdminGroupManager,
     removeAdminGroupUser,
     renameAdminGroup,
 } from "@services/Admin";
@@ -21,19 +23,21 @@ vi.mock("@contexts/NotificationsContext", () => ({
     useNotifications: () => ({ createErrorNotification: notifyError, createSuccessNotification: notifySuccess }),
 }));
 vi.mock("@services/Admin", () => ({
+    addAdminGroupManager: vi.fn(),
     addAdminGroupUser: vi.fn(),
     createAdminGroup: vi.fn(),
     deleteAdminGroup: vi.fn(),
     getAdminGroup: vi.fn(),
     getAdminGroups: vi.fn(),
     getAdminStatus: vi.fn(),
+    removeAdminGroupManager: vi.fn(),
     removeAdminGroupUser: vi.fn(),
     renameAdminGroup: vi.fn(),
 }));
 vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
 
 const summary = { managed: false, name: "team, odd", updated_at: "2026-08-25T00:00:00Z", user_count: 1, version: 2 };
-const details = { ...summary, users: ["alice"] };
+const details = { ...summary, managers: [], users: ["alice"] };
 
 beforeEach(() => {
     vi.resetAllMocks();
@@ -102,6 +106,28 @@ it("adds and removes group members", async () => {
     await waitFor(() => expect(addAdminGroupUser).toHaveBeenCalledWith("team, odd", "bob", 2));
     fireEvent.click(screen.getByRole("button", { name: "Remove alice" }));
     await waitFor(() => expect(removeAdminGroupUser).toHaveBeenCalledWith("team, odd", "alice", 3, ""));
+});
+
+it("lets a full administrator assign delegated managers", async () => {
+    vi.mocked(addAdminGroupManager).mockResolvedValue({ ...details, managers: ["manager"], version: 3 });
+    vi.mocked(removeAdminGroupManager).mockResolvedValue({ ...details, managers: [], version: 4 });
+    render(<GroupsView currentUsername="admin" />);
+    fireEvent.click(await screen.findByRole("button", { name: /team, odd/ }));
+    fireEvent.change(await screen.findByLabelText("Manager username"), { target: { value: "manager" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add manager" }));
+    await waitFor(() => expect(addAdminGroupManager).toHaveBeenCalledWith("team, odd", "manager", 2));
+    fireEvent.click(screen.getByRole("button", { name: "Remove manager manager" }));
+    await waitFor(() => expect(removeAdminGroupManager).toHaveBeenCalledWith("team, odd", "manager", 3));
+});
+
+it("keeps group structure and delegation hidden from a scoped manager", async () => {
+    render(<GroupsView currentUsername="manager" fullAdministrator={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: /team, odd/ }));
+
+    expect(screen.queryByLabelText("New group name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Group name")).not.toBeInTheDocument();
+    expect(screen.queryByText("Managers")).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Username to add")).toBeInTheDocument();
 });
 
 it("requires exact typed confirmation for changes affecting the current administrator", async () => {

@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import {
+    addAdminGroupManager,
     addAdminGroupUser,
     addAdminUserEmail,
     approveAdminRegistration,
@@ -20,6 +21,7 @@ import {
     grantAdminApplicationUser,
     linkAdminUserTelegram,
     rejectAdminRegistration,
+    removeAdminGroupManager,
     removeAdminGroupUser,
     renameAdminGroup,
     revokeAdminApplicationUser,
@@ -215,6 +217,8 @@ it("manages groups and memberships", async () => {
     await deleteAdminGroup("renamed", 3, "admin");
     await addAdminGroupUser("renamed", "alice", 3);
     await removeAdminGroupUser("renamed", "alice", 4, "admin");
+    await addAdminGroupManager("renamed", "manager", 5);
+    await removeAdminGroupManager("renamed", "manager", 6);
 
     expect(mockedAxios).toHaveBeenNthCalledWith(2, {
         method: "GET",
@@ -244,5 +248,15 @@ it("manages groups and memberships", async () => {
         data: { confirm_username: "admin", expected_version: 4, name: "renamed", username: "alice" },
         method: "DELETE",
         url: "/api/admin/group/user",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(8, {
+        data: { expected_version: 5, name: "renamed", username: "manager" },
+        method: "PUT",
+        url: "/api/admin/group/manager",
+    });
+    expect(mockedAxios).toHaveBeenNthCalledWith(9, {
+        data: { expected_version: 6, name: "renamed", username: "manager" },
+        method: "DELETE",
+        url: "/api/admin/group/manager",
     });
 });

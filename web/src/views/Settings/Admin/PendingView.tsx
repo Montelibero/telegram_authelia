@@ -5,7 +5,9 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
+    FormControlLabel,
     List,
     ListItem,
     ListItemButton,
@@ -22,6 +24,7 @@ import { useNotifications } from "@contexts/NotificationsContext";
 import {
     AdminRegistration,
     approveAdminRegistration,
+    getAdminApplications,
     getAdminRegistration,
     getAdminRegistrations,
     rejectAdminRegistration,
@@ -38,12 +41,17 @@ const providerIDLabel = (registration: AdminRegistration) =>
         ? `Telegram ID: ${registration.provider_user_id}`
         : registration.provider_user_id;
 
-const PendingView = function () {
+interface PendingViewProps {
+    fullAdministrator?: boolean;
+}
+
+const PendingView = function ({ fullAdministrator = true }: PendingViewProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [filter, setFilter] = useState<RegistrationFilter>("pending");
     const [registrations, setRegistrations] = useState<AdminRegistration[]>([]);
     const [selected, setSelected] = useState<AdminRegistration>();
+    const [availableGroups, setAvailableGroups] = useState<string[]>([]);
     const mutationLock = useAdminMutationLock();
 
     const loadRegistrations = useCallback(async () => {
@@ -57,6 +65,12 @@ const PendingView = function () {
     useEffect(() => {
         loadRegistrations().catch(console.error);
     }, [loadRegistrations]);
+
+    useEffect(() => {
+        getAdminApplications()
+            .then((applications) => setAvailableGroups(applications.map((application) => application.group)))
+            .catch(() => createErrorNotification(translate("Failed to load permissions")));
+    }, [createErrorNotification, translate]);
 
     const openRegistration = useCallback(
         async (id: number) => {
@@ -150,6 +164,8 @@ const PendingView = function () {
                     <RegistrationDetails
                         key={selected.id + ":" + selected.version}
                         registration={selected}
+                        availableGroups={availableGroups}
+                        fullAdministrator={fullAdministrator}
                         resolve={resolve}
                         mutationsUnlocked={mutationLock.unlocked}
                     />
@@ -160,17 +176,24 @@ const PendingView = function () {
 };
 
 interface RegistrationDetailsProps {
+    availableGroups: string[];
+    fullAdministrator: boolean;
     registration: AdminRegistration;
     resolve: (_operation: () => Promise<unknown>) => Promise<void>;
     mutationsUnlocked: boolean;
 }
 
-const RegistrationDetails = function ({ mutationsUnlocked, registration, resolve }: RegistrationDetailsProps) {
+const RegistrationDetails = function ({
+    availableGroups,
+    fullAdministrator,
+    mutationsUnlocked,
+    registration,
+    resolve,
+}: RegistrationDetailsProps) {
     const { t: translate } = useTranslation("settings");
     const [username, setUsername] = useState(registration.proposed_username ?? "");
     const [displayName, setDisplayName] = useState(registration.display_name ?? "");
     const [email, setEmail] = useState(registration.proposed_email ?? "");
-    const [group, setGroup] = useState("");
     const [groups, setGroups] = useState<string[]>([]);
 
     return (
@@ -200,29 +223,24 @@ const RegistrationDetails = function ({ mutationsUnlocked, registration, resolve
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                         />
-                        <Stack direction="row" spacing={1}>
-                            <TextField
-                                label={translate("New group")}
-                                value={group}
-                                onChange={(event) => setGroup(event.target.value)}
-                                fullWidth
-                            />
-                            <Button
-                                disabled={!group || groups.includes(group)}
-                                onClick={() => {
-                                    setGroups([...groups, group]);
-                                    setGroup("");
-                                }}
-                            >
-                                {translate("Add group")}
-                            </Button>
-                        </Stack>
-                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                            {groups.map((value) => (
-                                <Chip
-                                    key={value}
-                                    label={value}
-                                    onDelete={() => setGroups(groups.filter((item) => item !== value))}
+                        <Typography variant="h6">{translate("Groups")}</Typography>
+                        <Stack>
+                            {availableGroups.map((group) => (
+                                <FormControlLabel
+                                    key={group}
+                                    label={group}
+                                    control={
+                                        <Checkbox
+                                            checked={groups.includes(group)}
+                                            onChange={(_, checked) =>
+                                                setGroups(
+                                                    checked
+                                                        ? [...groups, group]
+                                                        : groups.filter((value) => value !== group),
+                                                )
+                                            }
+                                        />
+                                    }
                                 />
                             ))}
                         </Stack>
@@ -230,6 +248,7 @@ const RegistrationDetails = function ({ mutationsUnlocked, registration, resolve
                             <Stack direction="row" spacing={1}>
                                 <Button
                                     variant="contained"
+                                    disabled={groups.length === 0}
                                     onClick={() =>
                                         resolve(() =>
                                             approveAdminRegistration({
@@ -245,17 +264,19 @@ const RegistrationDetails = function ({ mutationsUnlocked, registration, resolve
                                 >
                                     {translate("Approve")}
                                 </Button>
-                                <Button
-                                    color="error"
-                                    variant="outlined"
-                                    onClick={() =>
-                                        resolve(() =>
-                                            rejectAdminRegistration(registration.id, registration.version),
-                                        ).catch(console.error)
-                                    }
-                                >
-                                    {translate("Reject")}
-                                </Button>
+                                {fullAdministrator ? (
+                                    <Button
+                                        color="error"
+                                        variant="outlined"
+                                        onClick={() =>
+                                            resolve(() =>
+                                                rejectAdminRegistration(registration.id, registration.version),
+                                            ).catch(console.error)
+                                        }
+                                    >
+                                        {translate("Reject")}
+                                    </Button>
+                                ) : null}
                             </Stack>
                         ) : null}
                     </Stack>

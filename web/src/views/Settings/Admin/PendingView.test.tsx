@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
     approveAdminRegistration,
+    getAdminApplications,
     getAdminRegistration,
     getAdminRegistrations,
     getAdminStatus,
@@ -19,6 +20,7 @@ vi.mock("@contexts/NotificationsContext", () => ({
 }));
 vi.mock("@services/Admin", () => ({
     approveAdminRegistration: vi.fn(),
+    getAdminApplications: vi.fn(),
     getAdminRegistration: vi.fn(),
     getAdminRegistrations: vi.fn(),
     getAdminStatus: vi.fn(),
@@ -44,6 +46,9 @@ beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAdminRegistrations).mockResolvedValue([registration]);
     vi.mocked(getAdminRegistration).mockResolvedValue(registration);
+    vi.mocked(getAdminApplications).mockResolvedValue([
+        { domain: "", group: "team, odd", group_version: 1, name: "team, odd", slug: "team-odd", users: [] },
+    ]);
     vi.mocked(getAdminStatus).mockResolvedValue({ mutation_ready: true, username: "admin" });
 });
 
@@ -106,8 +111,7 @@ it("edits and approves a pending registration with lossless groups", async () =>
     await screen.findByDisplayValue("alice@eurmtl.me");
 
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
-    fireEvent.change(screen.getByLabelText("New group"), { target: { value: "team, odd" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add group" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "team, odd" }));
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     await waitFor(() =>
@@ -121,6 +125,14 @@ it("edits and approves a pending registration with lossless groups", async () =>
         }),
     );
     expect(notifySuccess).toHaveBeenCalled();
+});
+
+it("does not allow a delegated manager to reject registrations", async () => {
+    render(<PendingView fullAdministrator={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/ }));
+
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
 });
 
 it("rejects a pending registration", async () => {
@@ -140,6 +152,7 @@ it("reloads current registration after a version conflict", async () => {
     render(<PendingView />);
     fireEvent.click(await screen.findByRole("button", { name: /alice/ }));
     await screen.findByDisplayValue("alice@eurmtl.me");
+    fireEvent.click(screen.getByRole("checkbox", { name: "team, odd" }));
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByDisplayValue("Changed elsewhere")).toBeInTheDocument();
