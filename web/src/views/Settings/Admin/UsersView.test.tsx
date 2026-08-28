@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { AssertionResult } from "@models/WebAuthn";
 import {
     addAdminGroupUser,
     addAdminUserEmail,
@@ -18,6 +19,7 @@ import {
     updateAdminUser,
 } from "@services/Admin";
 import { postFirstFactorReauthenticate } from "@services/Password";
+import { getWebAuthnOptions, getWebAuthnResult, postWebAuthnReauthenticateResponse } from "@services/WebAuthn";
 import UsersView from "@views/Settings/Admin/UsersView";
 
 const notifyError = vi.fn();
@@ -46,6 +48,11 @@ vi.mock("@services/Admin", () => ({
     updateAdminUser: vi.fn(),
 }));
 vi.mock("@services/Password", () => ({ postFirstFactorReauthenticate: vi.fn() }));
+vi.mock("@services/WebAuthn", () => ({
+    getWebAuthnOptions: vi.fn(),
+    getWebAuthnResult: vi.fn(),
+    postWebAuthnReauthenticateResponse: vi.fn(),
+}));
 
 const summary = {
     display_name: "Alice",
@@ -123,6 +130,27 @@ it("shows only reauthentication controls for mutations while the administrator p
     await waitFor(() => expect(postFirstFactorReauthenticate).toHaveBeenCalledWith("secret"));
     expect(screen.getByRole("button", { name: "Create user" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save user" })).toBeEnabled();
+});
+
+it("reauthenticates administrator mutations with a passkey", async () => {
+    let reauthenticated = false;
+    vi.mocked(getAdminStatus).mockImplementation(async () => ({
+        mutation_ready: reauthenticated,
+        username: "admin",
+    }));
+    vi.mocked(getWebAuthnOptions).mockResolvedValue({ options: {} as any, status: 200 });
+    vi.mocked(getWebAuthnResult).mockResolvedValue({ response: "assertion" as any, result: AssertionResult.Success });
+    vi.mocked(postWebAuthnReauthenticateResponse).mockImplementation(async () => {
+        reauthenticated = true;
+        return { data: { status: "OK" }, status: 200 } as any;
+    });
+
+    render(<UsersView currentUsername="admin" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reauthenticate with a passkey" }));
+
+    await waitFor(() => expect(postWebAuthnReauthenticateResponse).toHaveBeenCalledWith("assertion"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create user" })).toBeEnabled());
 });
 
 it("loads users and opens user details", async () => {

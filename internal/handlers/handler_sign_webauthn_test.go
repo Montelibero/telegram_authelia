@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,6 +214,7 @@ func TestWebAuthnAssertionPOST(t *testing.T) {
 
 	var (
 		dataReqGood        = fmt.Sprintf(dataReqFmt, base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(dataClientJSON, "https://login.example.com:8080"))))
+		dataReqReauth      = strings.Replace(dataReqGood, `"targetURL":null`, `"targetURL":null,"reauthenticate":true`, 1)
 		dataReqBadRPIDHash = fmt.Sprintf(dataReqFmt, base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(dataClientJSON, "http://example.com"))))
 	)
 
@@ -234,7 +236,8 @@ func TestWebAuthnAssertionPOST(t *testing.T) {
 				require.NoError(t, err)
 
 				us.Username = testUsername
-				us.AuthenticationMethodRefs.UsernameAndPassword = true
+				us.AuthenticationMethodRefs.External = true
+				us.FirstFactorAuthnTimestamp = 1
 				us.WebAuthn = &session.WebAuthn{
 					SessionData: &webauthn.SessionData{
 						Challenge:        "in1cL-oWfSjSd7uuwUvv2ndOAmRXb0cOAbUoTtAqvGE",
@@ -287,7 +290,7 @@ func TestWebAuthnAssertionPOST(t *testing.T) {
 						Return(nil),
 				)
 			},
-			dataReqGood,
+			dataReqReauth,
 			"",
 			fasthttp.StatusOK,
 			func(t *testing.T, mock *mocks.MockAutheliaCtx) {
@@ -296,6 +299,9 @@ func TestWebAuthnAssertionPOST(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Nil(t, us.WebAuthn)
+				assert.Equal(t, mock.Ctx.GetClock().Now().Unix(), us.FirstFactorAuthnTimestamp)
+				assert.True(t, us.AuthenticationMethodRefs.External)
+				assert.False(t, us.AuthenticationMethodRefs.UsernameAndPassword)
 			},
 		},
 		{

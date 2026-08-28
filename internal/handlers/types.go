@@ -49,11 +49,12 @@ type bodyRegisterFinishTOTP struct {
 
 // bodySignWebAuthnRequest is the  model of the request body of WebAuthn 2FA authentication endpoint.
 type bodySignWebAuthnRequest struct {
-	TargetURL string `json:"targetURL"`
-	FlowID    string `json:"flowID"`
-	Flow      string `json:"flow"`
-	SubFlow   string `json:"subflow"`
-	UserCode  string `json:"userCode"`
+	Reauthenticate bool   `json:"reauthenticate"`
+	TargetURL      string `json:"targetURL"`
+	FlowID         string `json:"flowID"`
+	Flow           string `json:"flow"`
+	SubFlow        string `json:"subflow"`
+	UserCode       string `json:"userCode"`
 
 	Response json.RawMessage `json:"response"`
 }

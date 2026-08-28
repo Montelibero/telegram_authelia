@@ -270,10 +270,16 @@ func WebAuthnAssertionPOST(ctx *middlewares.AutheliaCtx) {
 
 	doMarkAuthenticationAttempt(ctx, true, regulation.NewBan(regulation.BanTypeNone, userSession.Username, nil), regulation.AuthTypeWebAuthn, nil)
 
-	userSession.SetTwoFactorWebAuthn(ctx.GetClock().Now().UTC(),
-		response.AuthenticatorAttachment == protocol.CrossPlatform,
-		response.Response.AuthenticatorData.Flags.HasUserPresent(),
-		response.Response.AuthenticatorData.Flags.HasUserVerified())
+	now := ctx.GetClock().Now().UTC()
+	hardware := response.AuthenticatorAttachment == protocol.CrossPlatform
+	userPresence := response.Response.AuthenticatorData.Flags.HasUserPresent()
+	userVerified := response.Response.AuthenticatorData.Flags.HasUserVerified()
+
+	if bodyJSON.Reauthenticate {
+		userSession.SetPasskeyReauthenticate(now, hardware, userPresence, userVerified)
+	} else {
+		userSession.SetTwoFactorWebAuthn(now, hardware, userPresence, userVerified)
+	}
 
 	if len(bodyJSON.Flow) > 0 {
 		handleFlowResponse(ctx, &userSession, bodyJSON.FlowID, bodyJSON.Flow, bodyJSON.SubFlow, bodyJSON.UserCode)
