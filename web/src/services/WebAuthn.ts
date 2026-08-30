@@ -156,6 +156,14 @@ export async function postWebAuthnResponse(
     );
 }
 
+export async function postWebAuthnReauthenticateResponse(response: AuthenticationResponseJSON, signal?: AbortSignal) {
+    return axios.post<ServiceResponse<SignInResponse>>(
+        WebAuthnAssertionPath,
+        { reauthenticate: true, response },
+        { signal },
+    );
+}
+
 export async function getWebAuthnPasskeyOptions(
     signal?: AbortSignal,
 ): Promise<PublicKeyCredentialRequestOptionsStatus> {

@@ -1,0 +1,183 @@
+package handlers
+
+import (
+	"context"
+	"encoding/base64"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
+
+	"github.com/authelia/authelia/v4/internal/authentication"
+	"github.com/authelia/authelia/v4/internal/middlewares"
+	"github.com/authelia/authelia/v4/internal/mocks"
+	"github.com/authelia/authelia/v4/internal/model"
+	"github.com/authelia/authelia/v4/internal/session"
+	"github.com/authelia/authelia/v4/internal/telegram"
+)
+
+func TestTelegramLoginHandlersCreateFederatedOneFactorSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{})
+	defer mock.Close()
+	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321"}}
+	store := &handlerTelegramStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", DisplayName: "Bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me", Groups: []string{"app:grafana"}}}
+	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store)
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/login?rd=/portal")
+
+	TelegramLoginGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
+	require.NotEmpty(t, client.flow.State)
+	var stateCookie fasthttp.Cookie
+	require.NoError(t, stateCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie(telegramStateCookieName(client.flow.State))))
+	assert.True(t, stateCookie.HTTPOnly())
+	assert.True(t, stateCookie.Secure())
+	assert.Equal(t, "/", string(stateCookie.Path()))
+	assert.Less(t, len(stateCookie.Value()), 64)
+	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/callback?state=" + client.flow.State + "&code=code")
+	TelegramCallbackGET(mock.Ctx)
+	require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
+	assert.Equal(t, "https://auth.example.com/portal", string(mock.Ctx.Response.Header.Peek("Location")))
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.Equal(t, "bublik", userSession.Username)
+	assert.Equal(t, authentication.OneFactor, userSession.AuthenticationLevel(false))
+	assert.True(t, userSession.AuthenticationMethodRefs.External)
+	assert.False(t, userSession.AuthenticationMethodRefs.UsernameAndPassword)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
+	TelegramCallbackGET(mock.Ctx)
+	assert.Equal(t, fasthttp.StatusBadRequest, mock.Ctx.Response.StatusCode())
+}
+
+func TestTelegramCallbackRejectsFlowFromAnotherBrowser(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{})
+	defer mock.Close()
+	client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321"}}
+	store := &handlerTelegramStore{details: model.MTLUserDetails{User: model.MTLUser{Username: "bublik", Status: model.MTLUserStatusActive}, PrimaryEmail: "bublik@eurmtl.me"}}
+	mock.Ctx.Providers.Telegram = telegram.NewLoginService(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store)
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/login")
+	TelegramLoginGET(mock.Ctx)
+
+	mock.Ctx.Response.Reset()
+	mock.Ctx.Request.SetRequestURI("https://auth.example.com/api/telegram/callback?state=" + client.flow.State + "&code=code")
+	TelegramCallbackGET(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusBadRequest, mock.Ctx.Response.StatusCode())
+}
+
+func TestTelegramCallbackRedirectsRegistrationStatusWithoutCreatingSession(t *testing.T) {
+	for _, status := range []model.MTLRegistrationStatus{model.MTLRegistrationStatusPending, model.MTLRegistrationStatusRejected} {
+		t.Run(string(status), func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtxWithUserSession(t, session.UserSession{})
+			defer mock.Close()
+			mock.Ctx.SetUserValue(middlewares.UserValueKeyBaseURL, "/auth")
+			mock.Ctx.Request.Header.Set("X-Forwarded-Host", "auth.example.com")
+			client := &handlerTelegramClient{identity: telegram.Identity{ProviderUserID: "987654321", Username: "bublik"}}
+			store := &handlerTelegramStore{found: false}
+			registrations := telegram.NewRegistrationService(&handlerTelegramRegistrationStore{status: status}, "eurmtl.me")
+			mock.Ctx.Providers.Telegram = telegram.NewLoginServiceWithRegistration(client, telegram.NewStateStore(time.Minute, nil, nil, []byte("test secret"), newHandlerStateReplayStore()), store, registrations)
+			mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/login?rd=/portal")
+
+			TelegramLoginGET(mock.Ctx)
+			var stateCookie fasthttp.Cookie
+			require.NoError(t, stateCookie.ParseBytes(mock.Ctx.Response.Header.PeekCookie(telegramStateCookieName(client.flow.State))))
+			mock.Ctx.Request.Header.SetCookie(string(stateCookie.Key()), string(stateCookie.Value()))
+
+			mock.Ctx.Response.Reset()
+			mock.Ctx.Request.SetRequestURI("https://auth.example.com/auth/api/telegram/callback?state=" + client.flow.State + "&code=code")
+			TelegramCallbackGET(mock.Ctx)
+
+			require.Equal(t, fasthttp.StatusFound, mock.Ctx.Response.StatusCode())
+			assert.Equal(t, "https://auth.example.com/auth/?telegram_status="+string(status), string(mock.Ctx.Response.Header.Peek("Location")))
+			userSession, err := mock.Ctx.GetSession()
+			require.NoError(t, err)
+			assert.Equal(t, authentication.NotAuthenticated, userSession.AuthenticationLevel(false))
+		})
+	}
+}
+
+type handlerTelegramClient struct {
+	flow     telegram.Flow
+	identity telegram.Identity
+}
+
+func (c *handlerTelegramClient) AuthorizationURL(flow telegram.Flow) string {
+	c.flow = flow
+	return "https://oauth.telegram.org/auth"
+}
+
+func (c *handlerTelegramClient) Exchange(context.Context, string, telegram.Flow) (telegram.Identity, error) {
+	return c.identity, nil
+}
+
+type handlerTelegramStore struct {
+	details model.MTLUserDetails
+	found   bool
+}
+
+func (s *handlerTelegramStore) LoadMTLUserByIdentity(context.Context, string, string) (model.MTLUserDetails, bool, error) {
+	if !s.found && s.details.User.Username == "" {
+		return model.MTLUserDetails{}, false, nil
+	}
+	return s.details, true, nil
+}
+
+type handlerTelegramRegistrationStore struct{ status model.MTLRegistrationStatus }
+
+func (s *handlerTelegramRegistrationStore) UpsertMTLRegistration(_ context.Context, candidate model.MTLRegistrationCandidate) (model.MTLRegistrationRequest, error) {
+	return model.MTLRegistrationRequest{Provider: candidate.Provider, ProviderUserID: candidate.ProviderUserID, Status: s.status}, nil
+}
+
+type handlerStateReplayStore struct {
+	mu       sync.Mutex
+	consumed map[string]bool
+	codes    map[uuid.UUID]model.OneTimeCode
+}
+
+func newHandlerStateReplayStore() *handlerStateReplayStore {
+	return &handlerStateReplayStore{consumed: map[string]bool{}, codes: map[uuid.UUID]model.OneTimeCode{}}
+}
+
+func (s *handlerStateReplayStore) SaveOneTimeCode(_ context.Context, code model.OneTimeCode) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code.Signature = base64.RawURLEncoding.EncodeToString(code.Code)
+	s.codes[code.PublicID] = code
+	return code.Signature, nil
+}
+
+func (s *handlerStateReplayStore) LoadOneTimeCodeByPublicID(_ context.Context, id uuid.UUID) (*model.OneTimeCode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code, ok := s.codes[id]
+	if !ok {
+		return nil, nil
+	}
+	return &code, nil
+}
+
+func (s *handlerStateReplayStore) ConsumeTelegramState(_ context.Context, signature string, _ time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.consumed[signature] {
+		return false, nil
+	}
+	s.consumed[signature] = true
+	for id, code := range s.codes {
+		if code.Signature == signature {
+			delete(s.codes, id)
+		}
+	}
+	return true, nil
+}
+
+func (s *handlerStateReplayStore) PurgeTelegramStates(context.Context, time.Time) error { return nil }

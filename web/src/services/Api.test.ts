@@ -1,6 +1,7 @@
 import { AxiosResponse } from "axios";
 
 import {
+    TelegramLoginPath,
     hasServiceError,
     toDataRateLimited,
     validateStatusAuthentication,
@@ -8,6 +9,10 @@ import {
     validateStatusTooManyRequests,
     validateStatusWebAuthnCreation,
 } from "@services/Api";
+
+it("exposes the Telegram login API path", () => {
+    expect(TelegramLoginPath).toBe("/api/telegram/login");
+});
 
 it("throws for missing retry-after header", () => {
     const resp = { data: { status: "KO" }, headers: {}, status: 429 } as any;

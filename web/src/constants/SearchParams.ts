@@ -6,6 +6,8 @@ export const RedirectionURL: string = "rd";
 
 export const RedirectionRestoreURL: string = "xrd";
 
+export const TelegramStatus: string = "telegram_status";
+
 export const RequestMethod: string = "rm";
 
 export const Flow: string = "flow";

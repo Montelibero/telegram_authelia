@@ -22,6 +22,7 @@ type MethodList = []string
 // configurationBody the content returned by the configuration endpoint.
 type configurationBody struct {
 	AvailableMethods       MethodList `json:"available_methods"`
+	PasskeyLoginEnabled    bool       `json:"passkey_login_enabled"`
 	PasswordChangeDisabled bool       `json:"password_change_disabled"`
 	PasswordResetDisabled  bool       `json:"password_reset_disabled"`
 }
@@ -48,11 +49,12 @@ type bodyRegisterFinishTOTP struct {
 
 // bodySignWebAuthnRequest is the  model of the request body of WebAuthn 2FA authentication endpoint.
 type bodySignWebAuthnRequest struct {
-	TargetURL string `json:"targetURL"`
-	FlowID    string `json:"flowID"`
-	Flow      string `json:"flow"`
-	SubFlow   string `json:"subflow"`
-	UserCode  string `json:"userCode"`
+	Reauthenticate bool   `json:"reauthenticate"`
+	TargetURL      string `json:"targetURL"`
+	FlowID         string `json:"flowID"`
+	Flow           string `json:"flow"`
+	SubFlow        string `json:"subflow"`
+	UserCode       string `json:"userCode"`
 
 	Response json.RawMessage `json:"response"`
 }
@@ -204,6 +206,8 @@ type StateResponse struct {
 	Username              string               `json:"username"`
 	AuthenticationLevel   authentication.Level `json:"authentication_level"`
 	FactorKnowledge       bool                 `json:"factor_knowledge"`
+	Administrator         bool                 `json:"administrator,omitempty"`
+	Manager               bool                 `json:"manager,omitempty"`
 	DefaultRedirectionURL string               `json:"default_redirection_url,omitempty"`
 }
 

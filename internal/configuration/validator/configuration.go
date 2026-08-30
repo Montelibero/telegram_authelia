@@ -49,6 +49,10 @@ func ValidateConfiguration(config *schema.Configuration, validator *schema.Struc
 
 	ValidateAuthenticationBackend(&config.AuthenticationBackend, validator)
 
+	ValidateApplications(&config.Applications, validator)
+
+	ValidateTelegram(&config.Telegram, validator)
+
 	ValidateDefinitions(config, validator)
 
 	ValidateAccessControl(config, validator)

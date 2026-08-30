@@ -19,6 +19,10 @@ type logoutResponseBody struct {
 func LogoutPOST(ctx *middlewares.AutheliaCtx) {
 	body := logoutBody{}
 	responseBody := logoutResponseBody{SafeTargetURL: false}
+	username := ""
+	if userSession, sessionErr := ctx.GetSession(); sessionErr == nil {
+		username = userSession.Username
+	}
 
 	err := ctx.ParseBody(&body)
 	if err != nil {
@@ -28,6 +32,8 @@ func LogoutPOST(ctx *middlewares.AutheliaCtx) {
 	err = ctx.DestroySession()
 	if err != nil {
 		ctx.Error(fmt.Errorf("unable to destroy session during logout: %w", err), messageOperationFailed)
+	} else {
+		ctx.Logger.WithField("username", username).Info("User logged out")
 	}
 
 	redirectionURL, err := url.ParseRequestURI(body.TargetURL)
@@ -36,7 +42,7 @@ func LogoutPOST(ctx *middlewares.AutheliaCtx) {
 	}
 
 	if body.TargetURL != "" {
-		ctx.Logger.Debugf("Logout target url is %s, safe %t", body.TargetURL, responseBody.SafeTargetURL)
+		ctx.Logger.Infof("Logout target url is %s, safe %t", body.TargetURL, responseBody.SafeTargetURL)
 	}
 
 	err = ctx.SetJSONBody(responseBody)

@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { useLocalStorageMethodContext } from "@contexts/LocalStorageMethodContext";
 import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
+import { useQueryParam } from "@hooks/QueryParam";
 import { useRouterNavigate } from "@hooks/RouterNavigate";
 import { useAutheliaState } from "@hooks/State";
 import { useUserInfoPOST } from "@hooks/UserInfo";
@@ -36,7 +37,7 @@ vi.mock("@contexts/NotificationsContext", () => ({
 }));
 
 vi.mock("@hooks/QueryParam", () => ({
-    useQueryParam: () => null,
+    useQueryParam: vi.fn(),
 }));
 
 vi.mock("@hooks/Redirector", () => ({
@@ -77,6 +78,8 @@ vi.mock("@views/LoginPortal/SecondFactor/SecondFactorForm", () => ({
 
 const mockNavigate = vi.fn();
 const mockCreateErrorNotification = vi.fn();
+const mockCreateInfoNotification = vi.fn();
+const mockCreateWarnNotification = vi.fn();
 
 const defaultProps = {
     duoSelfEnrollment: false,
@@ -84,13 +87,14 @@ const defaultProps = {
     rememberMe: true,
     resetPassword: true,
     resetPasswordCustomURL: "",
+    telegramLogin: false,
 };
 
 const mockNotificationsReturn: ReturnType<typeof useNotifications> = {
     createErrorNotification: mockCreateErrorNotification,
-    createInfoNotification: vi.fn(),
+    createInfoNotification: mockCreateInfoNotification,
     createSuccessNotification: vi.fn(),
-    createWarnNotification: vi.fn(),
+    createWarnNotification: mockCreateWarnNotification,
     isActive: false,
     notification: null,
     resetNotification: vi.fn(),
@@ -99,6 +103,7 @@ const mockNotificationsReturn: ReturnType<typeof useNotifications> = {
 
 beforeEach(() => {
     vi.mocked(useRouterNavigate).mockReturnValue(mockNavigate);
+    vi.mocked(useQueryParam).mockReturnValue(undefined);
     vi.mocked(useNotifications).mockReturnValue(mockNotificationsReturn);
     vi.mocked(useLocalStorageMethodContext).mockReturnValue({
         localStorageMethod: undefined,
@@ -110,6 +115,39 @@ beforeEach(() => {
     vi.mocked(useUserInfoPOST).mockReturnValue([undefined, vi.fn(), false, undefined]);
     mockNavigate.mockClear();
     mockCreateErrorNotification.mockClear();
+    mockCreateInfoNotification.mockClear();
+    mockCreateWarnNotification.mockClear();
+});
+
+it("shows a pending Telegram registration notification", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "telegram_status" ? "pending" : undefined));
+
+    render(
+        <MemoryRouter>
+            <LoginPortal {...defaultProps} />
+        </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+        expect(mockCreateInfoNotification).toHaveBeenCalledWith(
+            "Your Telegram registration request is awaiting approval",
+            10,
+        ),
+    );
+});
+
+it("shows a rejected Telegram registration notification", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "telegram_status" ? "rejected" : undefined));
+
+    render(
+        <MemoryRouter>
+            <LoginPortal {...defaultProps} />
+        </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+        expect(mockCreateWarnNotification).toHaveBeenCalledWith("Your Telegram registration request was rejected", 10),
+    );
 });
 
 it("renders loading page when state is not loaded", () => {
@@ -174,6 +212,7 @@ it("OneFactor with no 2FA methods navigates to /authenticated", async () => {
 });
 
 it("OneFactor with TOTP preferred navigates to /2fa/totp", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -206,6 +245,7 @@ it("OneFactor with TOTP preferred navigates to /2fa/totp", async () => {
 });
 
 it("OneFactor with WebAuthn preferred navigates to /2fa/webauthn", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -238,6 +278,7 @@ it("OneFactor with WebAuthn preferred navigates to /2fa/webauthn", async () => {
 });
 
 it("OneFactor with MobilePush preferred navigates to /2fa/push", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),
@@ -269,7 +310,72 @@ it("OneFactor with MobilePush preferred navigates to /2fa/push", async () => {
     expect(mockNavigate).toHaveBeenNthCalledWith(1, "/2fa/push");
 });
 
-it("OneFactor with factor_knowledge false navigates to /2fa/password", async () => {
+it("OneFactor with factor_knowledge false and no target navigates to /authenticated", async () => {
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: false, username: "test" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useConfiguration).mockReturnValue([
+        { available_methods: new Set([1]), password_change_disabled: false, password_reset_disabled: false },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useUserInfoPOST).mockReturnValue([
+        { display_name: "test", emails: [], has_duo: false, has_totp: true, has_webauthn: false, method: 1 },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+
+    render(
+        <MemoryRouter>
+            <LoginPortal {...defaultProps} />
+        </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockNavigate).toHaveBeenNthCalledWith(1, "/authenticated", false);
+});
+
+it("OneFactor with factor_knowledge true and no target navigates to /authenticated", async () => {
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: true, username: "test" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useConfiguration).mockReturnValue([
+        { available_methods: new Set([2]), password_change_disabled: false, password_reset_disabled: false },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    vi.mocked(useUserInfoPOST).mockReturnValue([
+        { display_name: "test", emails: [], has_duo: false, has_totp: false, has_webauthn: true, method: 2 },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+
+    render(
+        <MemoryRouter>
+            <LoginPortal {...defaultProps} />
+        </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockNavigate).toHaveBeenNthCalledWith(1, "/authenticated", false);
+});
+
+it("OneFactor with factor_knowledge false and a protected target navigates to /2fa/password", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: false, username: "test" },
         vi.fn(),
@@ -302,6 +408,7 @@ it("OneFactor with factor_knowledge false navigates to /2fa/password", async () 
 });
 
 it("localStorageMethod overrides userInfo.method", async () => {
+    vi.mocked(useQueryParam).mockImplementation((name) => (name === "rd" ? "https://secure.example.com" : undefined));
     vi.mocked(useAutheliaState).mockReturnValue([
         { authentication_level: 1, factor_knowledge: true, username: "test" },
         vi.fn(),

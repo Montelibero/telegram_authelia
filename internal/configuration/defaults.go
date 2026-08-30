@@ -2,6 +2,7 @@ package configuration
 
 var defaults = map[string]any{
 	"regulation.max_retries": 3,
+	"telegram.enabled":       false,
 	"server.endpoints.rate_limits.openid_connect_introspection.enable":                true,
 	"server.endpoints.rate_limits.openid_connect_pushed_authorization_request.enable": true,
 	"server.endpoints.rate_limits.openid_connect_revocation.enable":                   true,
@@ -13,6 +14,7 @@ var defaults = map[string]any{
 	"server.endpoints.rate_limits.second_factor_duo.enable":                           true,
 	"server.endpoints.rate_limits.session_elevation_start.enable":                     true,
 	"server.endpoints.rate_limits.session_elevation_finish.enable":                    true,
+	"server.endpoints.rate_limits.telegram_start.enable":                              true,
 	"webauthn.selection_criteria.discoverability":                                     "preferred",
 	"webauthn.selection_criteria.user_verification":                                   "preferred",
 	"webauthn.metadata.cache_policy":                                                  "strict",

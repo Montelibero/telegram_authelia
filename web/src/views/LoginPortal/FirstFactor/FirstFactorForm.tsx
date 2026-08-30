@@ -20,6 +20,7 @@ import { BroadcastChannel } from "broadcast-channel";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
+import TelegramLoginButton from "@components/TelegramLoginButton";
 import { ResetPasswordStep1Route } from "@constants/Routes";
 import { RedirectionURL, RequestMethod } from "@constants/SearchParams";
 import { useNotifications } from "@contexts/NotificationsContext";
@@ -37,6 +38,7 @@ export interface Props {
     rememberMe: boolean;
     resetPassword: boolean;
     resetPasswordCustomURL: string;
+    telegramLogin: boolean;
 
     onAuthenticationStart: () => void;
     onAuthenticationStop: () => void;
@@ -367,6 +369,11 @@ const FirstFactorForm = function (props: Props) {
                             {translate("Sign in")}
                         </Button>
                     </Grid>
+                    {props.telegramLogin ? (
+                        <Grid size={{ xs: 12 }}>
+                            <TelegramLoginButton enabled={props.telegramLogin} disabled={disabled} />
+                        </Grid>
+                    ) : null}
                     {props.passkeyLogin ? (
                         <PasskeyForm
                             disabled={props.disabled}

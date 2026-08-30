@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/pflag"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/configuration/validator"
 	"github.com/authelia/authelia/v4/internal/middlewares"
@@ -34,6 +35,96 @@ import (
 	"github.com/authelia/authelia/v4/internal/utils"
 	"github.com/authelia/authelia/v4/internal/webauthn"
 )
+
+type storageUserIdentityStore interface {
+	LinkMTLUserIdentity(ctx context.Context, username, provider, providerUserID, providerUsername string) error
+	LoadMTLUserIdentity(ctx context.Context, username, provider string) (model.MTLUserIdentity, bool, error)
+	UnlinkMTLUserIdentity(ctx context.Context, username, provider string) error
+}
+
+func runStorageUserIdentityLink(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider, providerUserID, providerUsername string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	if err := store.LinkMTLUserIdentity(ctx, username, identityProvider, providerUserID, providerUsername); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(w, "Linked %s identity to user %s.\n", identityProvider, username)
+	return nil
+}
+
+func runStorageUserIdentityShow(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	identity, found, err := store.LoadMTLUserIdentity(ctx, username, identityProvider)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return storage.ErrMTLIdentityNotFound
+	}
+	providerUsername := ""
+	if identity.ProviderUsername != nil {
+		providerUsername = *identity.ProviderUsername
+	}
+	_, _ = fmt.Fprintf(w, "User: %s\nProvider: %s\nProvider user ID: %s\nProvider username: %s\n", username, identity.Provider, identity.ProviderUserID, providerUsername)
+	return nil
+}
+
+func runStorageUserIdentityUnlink(ctx context.Context, w io.Writer, provider storage.Provider, username, identityProvider string) error {
+	store, ok := provider.(storageUserIdentityStore)
+	if !ok {
+		return errors.New("configured storage provider is not compatible with user identities")
+	}
+	if err := store.UnlinkMTLUserIdentity(ctx, username, identityProvider); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(w, "Unlinked %s identity from user %s.\n", identityProvider, username)
+	return nil
+}
+
+// StorageUserImportRunE imports file-backed users into the SQL user store.
+func (ctx *CmdCtx) StorageUserImportRunE(cmd *cobra.Command, _ []string) (err error) {
+	from, err := cmd.Flags().GetString(cmdFlagNameFrom)
+	if err != nil {
+		return err
+	}
+
+	dryRun, err := cmd.Flags().GetBool(cmdFlagNameDryRun)
+	if err != nil {
+		return err
+	}
+
+	if ctx.config.AuthenticationBackend.SQL == nil {
+		return fmt.Errorf("SQL authentication backend is not configured")
+	}
+
+	return runStorageUserImport(ctx, cmd.OutOrStdout(), ctx.providers.StorageProvider, from, ctx.config.AuthenticationBackend.SQL.GeneratedEmailDomain, dryRun)
+}
+
+func runStorageUserImport(ctx context.Context, w io.Writer, provider storage.Provider, from, generatedEmailDomain string, dryRun bool) (err error) {
+	store, ok := provider.(authentication.SQLUserImportStore)
+	if !ok {
+		return fmt.Errorf("configured storage provider is not compatible with SQL user import")
+	}
+
+	report, err := authentication.ImportFileUsers(ctx, from, generatedEmailDomain, store, dryRun)
+	_, _ = fmt.Fprintf(w, "SQL user import: dry-run=%t created=%d unchanged=%d conflicts=%d\n", dryRun, len(report.Created), len(report.Unchanged), len(report.Conflicts))
+	if len(report.Created) != 0 {
+		_, _ = fmt.Fprintf(w, "Created: %s\n", strings.Join(report.Created, ", "))
+	}
+	if len(report.Unchanged) != 0 {
+		_, _ = fmt.Fprintf(w, "Unchanged: %s\n", strings.Join(report.Unchanged, ", "))
+	}
+	if len(report.Conflicts) != 0 {
+		_, _ = fmt.Fprintf(w, "Conflicts: %s\n", strings.Join(report.Conflicts, ", "))
+	}
+
+	return err
+}
 
 // LoadProvidersStorageRunE is a special PreRunE that loads the storage provider into the CmdCtx.
 func (ctx *CmdCtx) LoadProvidersStorageRunE(cmd *cobra.Command, args []string) (err error) {

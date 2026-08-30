@@ -178,6 +178,31 @@ func (s *ConfigurationHandlerFixture) TestShouldRemoveAllMethodsWhenNoTwoFactorA
 	})
 }
 
+func (s *ConfigurationHandlerFixture) TestShouldExposePasskeyLoginWithoutTwoFactorACLRules() {
+	s.mock.Ctx.Configuration = schema.Configuration{
+		WebAuthn: schema.WebAuthn{
+			Disable:            false,
+			EnablePasskeyLogin: true,
+		},
+		AccessControl: schema.AccessControl{
+			DefaultPolicy: "deny",
+			Rules: []schema.AccessControlRule{{
+				Domains: []string{"example.com"},
+				Policy:  "one_factor",
+			}},
+		},
+	}
+
+	s.mock.Ctx.Providers.Authorizer = authorization.NewAuthorizer(&s.mock.Ctx.Configuration)
+
+	ConfigurationGET(s.mock.Ctx)
+
+	s.mock.Assert200OK(s.T(), configurationBody{
+		AvailableMethods:    []string{},
+		PasskeyLoginEnabled: true,
+	})
+}
+
 func (s *ConfigurationHandlerFixture) TestShouldRemoveAllMethodsWhenAllDisabledOrNotConfigured() {
 	s.mock.Ctx.Configuration = schema.Configuration{
 		DuoAPI: schema.DuoAPI{

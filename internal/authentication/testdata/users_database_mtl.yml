@@ -1,0 +1,17 @@
+users:
+  bublik:
+    password: "$plaintext$password"
+    displayname: "Bublik"
+    email: "Bublik@Example.com"
+    groups:
+      - app:grafana
+      - admins
+  noemail:
+    password: "$plaintext$password"
+    displayname: "No Email"
+    groups: []
+  disabled:
+    password: "$plaintext$password"
+    displayname: "Disabled"
+    disabled: true
+    groups: []

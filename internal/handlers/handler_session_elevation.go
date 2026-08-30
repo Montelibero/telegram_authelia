@@ -59,6 +59,11 @@ func UserSessionElevationGET(ctx *middlewares.AutheliaCtx) {
 
 		response.FactorKnowledge = userSession.AuthenticationMethodRefs.FactorKnowledge()
 
+		if ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode && middlewares.IsRecentFirstFactorAuthentication(ctx, &userSession) {
+			response.Elevated = true
+			response.Expires = int(userSession.GetFirstFactorAuthn().Add(ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan).Sub(ctx.GetClock().Now()).Seconds())
+		}
+
 		info, err = ctx.Providers.StorageProvider.LoadUserInfo(ctx, userSession.Username)
 
 		has = info.HasTOTP || info.HasWebAuthn || info.HasDuo
@@ -119,6 +124,12 @@ func UserSessionElevationGET(ctx *middlewares.AutheliaCtx) {
 
 // UserSessionElevationPOST creates a new elevation session to be validated.
 func UserSessionElevationPOST(ctx *middlewares.AutheliaCtx) {
+	if ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode {
+		ctx.SetJSONError(messageOperationFailed)
+		ctx.SetStatusCode(fasthttp.StatusForbidden)
+		return
+	}
+
 	var (
 		userSession session.UserSession
 		err         error
@@ -224,6 +235,12 @@ func UserSessionElevationPOST(ctx *middlewares.AutheliaCtx) {
 
 // UserSessionElevationPUT validates an elevation session and puts it into effect.
 func UserSessionElevationPUT(ctx *middlewares.AutheliaCtx) {
+	if ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode {
+		ctx.SetJSONError(messageOperationFailed)
+		ctx.SetStatusCode(fasthttp.StatusForbidden)
+		return
+	}
+
 	bodyJSON := bodyPUTUserSessionElevate{}
 
 	var (

@@ -215,10 +215,50 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPostMiddlewares(middlewares.RequireElevated).
 		Build()
 
+	middlewareAdminMutation := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminMutation).
+		Build()
+	middlewareAdminAccess := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminAccess).
+		Build()
+	middlewareAdminAccessMutation := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminAccessMutation).
+		Build()
+
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
 	r.GET("/api/health", middlewareAPI(handlers.HealthGET))
 
 	r.GET("/api/state", middlewareAPI(handlers.StateGET))
+	r.GET("/api/admin", middlewareAdminAccess(handlers.AdminGET))
+	r.GET("/api/admin/users", middlewareAdminAccess(handlers.AdminUsersGET))
+	r.GET("/api/admin/applications", middlewareAdminAccess(handlers.AdminApplicationsGET))
+	r.PUT("/api/admin/application/user", middlewareAdminAccessMutation(handlers.AdminApplicationUserPUT))
+	r.DELETE("/api/admin/application/user", middlewareAdminAccessMutation(handlers.AdminApplicationUserDELETE))
+	r.POST("/api/admin/users", middlewareAdminAccessMutation(handlers.AdminUserPOST))
+	r.GET("/api/admin/user", middlewareAdminAccess(handlers.AdminUserGET))
+	r.PATCH("/api/admin/user", middlewareAdminAccessMutation(handlers.AdminUserPATCH))
+	r.POST("/api/admin/users/email", middlewareAdminAccessMutation(handlers.AdminUserEmailPOST))
+	r.PUT("/api/admin/users/email/primary", middlewareAdminAccessMutation(handlers.AdminUserEmailPrimaryPUT))
+	r.DELETE("/api/admin/users/email", middlewareAdminAccessMutation(handlers.AdminUserEmailDELETE))
+	r.DELETE("/api/admin/users/identity", middlewareAdminAccessMutation(handlers.AdminUserIdentityDELETE))
+	r.PUT("/api/admin/users/identity", middlewareAdminAccessMutation(handlers.AdminUserIdentityPUT))
+	r.POST("/api/admin/users/setup-link", middlewareAdminAccessMutation(handlers.AdminUserSetupLinkPOST))
+	r.GET("/api/admin/groups", middlewareAdminAccess(handlers.AdminGroupsGET))
+	r.POST("/api/admin/groups", middlewareAdminMutation(handlers.AdminGroupPOST))
+	r.GET("/api/admin/group", middlewareAdminAccess(handlers.AdminGroupGET))
+	r.PATCH("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupPATCH))
+	r.DELETE("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupDELETE))
+	r.PUT("/api/admin/group/user", middlewareAdminAccessMutation(handlers.AdminGroupUserPUT))
+	r.DELETE("/api/admin/group/user", middlewareAdminAccessMutation(handlers.AdminGroupUserDELETE))
+	r.PUT("/api/admin/group/manager", middlewareAdminMutation(handlers.AdminGroupManagerPUT))
+	r.DELETE("/api/admin/group/manager", middlewareAdminMutation(handlers.AdminGroupManagerDELETE))
+	r.GET("/api/admin/registrations", middlewareAdminAccess(handlers.AdminRegistrationsGET))
+	r.GET("/api/admin/registration", middlewareAdminAccess(handlers.AdminRegistrationGET))
+	r.POST("/api/admin/registration/approve", middlewareAdminAccessMutation(handlers.AdminRegistrationApprovePOST))
+	r.POST("/api/admin/registration/reject", middlewareAdminMutation(handlers.AdminRegistrationRejectPOST))
 
 	r.GET("/api/configuration", middleware1FA(handlers.ConfigurationGET))
 
@@ -257,18 +297,32 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 
 	r.POST("/api/firstfactor", middlewareAPI(handlers.FirstFactorPasswordPOST(delayerPassword)))
 	r.POST("/api/firstfactor/reauthenticate", middleware1FA(handlers.FirstFactorReauthenticatePOST(delayerPassword)))
+	if config.Telegram.Enabled {
+		rateLimitTelegramStart := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.TelegramStart), middlewares.WithRateLimitContext(ctx))
+		r.GET("/api/telegram/login", middlewareAPI(rateLimitTelegramStart(handlers.TelegramLoginGET)))
+		r.GET("/api/telegram/callback", middlewareAPI(handlers.TelegramCallbackGET))
+		r.GET("/api/telegram/link", middlewareElevated1FA(rateLimitTelegramStart(handlers.TelegramLinkGET)))
+		r.GET("/api/telegram/link/status", middleware1FA(handlers.TelegramLinkStatusGET))
+		r.DELETE("/api/telegram/link", middlewareElevated1FA(handlers.TelegramUnlinkDELETE))
+		r.GET("/api/self-service/password/telegram", middleware1FA(rateLimitTelegramStart(handlers.TelegramPasswordProofGET)))
+		r.POST("/api/self-service/password", middleware1FA(middlewares.RequireSameOriginMutation(handlers.SelfServicePasswordSetPOST)))
+		r.DELETE("/api/self-service/password", middleware1FA(middlewares.RequireSameOriginMutation(handlers.SelfServicePasswordDELETE)))
+	}
+	r.GET("/api/self-service/profile", middleware1FA(handlers.SelfServiceProfileGET))
+	r.PATCH("/api/self-service/profile", middleware1FA(middlewares.RequireSameOriginMutation(handlers.SelfServiceProfilePATCH)))
 	r.POST("/api/logout", middlewareAPI(handlers.LogoutPOST))
 
-	// Only register endpoints if forgot password is not disabled.
+	rateLimitResetPasswordFinish := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.ResetPasswordFinish), middlewares.WithRateLimitContext(ctx))
+
+	// These endpoints also complete administrator-issued setup links, so they remain available when public password reset is disabled.
+	r.POST("/api/reset-password/identity/finish", middlewareAPI(rateLimitResetPasswordFinish(handlers.ResetPasswordIdentityFinish)))
+	r.POST("/api/reset-password", middlewareAPI(handlers.ResetPasswordPOST))
+
+	// Only register endpoints which initiate or revoke public forgot-password flows when password reset is enabled.
 	if !config.AuthenticationBackend.PasswordReset.Disable && config.AuthenticationBackend.PasswordReset.CustomURL.String() == "" {
 		rateLimitResetPasswordStart := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.ResetPasswordStart), middlewares.WithRateLimitContext(ctx))
-		rateLimitResetPasswordFinish := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.ResetPasswordFinish), middlewares.WithRateLimitContext(ctx))
 
-		// Password reset related endpoints.
 		r.POST("/api/reset-password/identity/start", middlewareAPI(rateLimitResetPasswordStart(handlers.ResetPasswordIdentityStart)))
-		r.POST("/api/reset-password/identity/finish", middlewareAPI(rateLimitResetPasswordFinish(handlers.ResetPasswordIdentityFinish)))
-
-		r.POST("/api/reset-password", middlewareAPI(handlers.ResetPasswordPOST))
 		r.DELETE("/api/reset-password", middlewareAPI(rateLimitResetPasswordFinish(handlers.ResetPasswordDELETE)))
 	}
 

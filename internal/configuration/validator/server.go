@@ -290,6 +290,8 @@ func validateServerEndpointsRateLimits(config *schema.Configuration, validator *
 
 	validateServerEndpointsRateLimitDefaultWeighted("session_elevation_start", &config.Server.Endpoints.RateLimits.SessionElevationStart, schema.DefaultServerConfiguration.Endpoints.RateLimits.SessionElevationStart, config.IdentityValidation.ElevatedSession.CodeLifespan, validator)
 	validateServerEndpointsRateLimitDefaultWeighted("session_elevation_finish", &config.Server.Endpoints.RateLimits.SessionElevationFinish, schema.DefaultServerConfiguration.Endpoints.RateLimits.SessionElevationFinish, config.IdentityValidation.ElevatedSession.ElevationLifespan, validator)
+
+	validateServerEndpointsRateLimitDefault("telegram_start", &config.Server.Endpoints.RateLimits.TelegramStart, schema.DefaultServerConfiguration.Endpoints.RateLimits.TelegramStart, validator)
 }
 
 func validateServerEndpointsRateLimitDefault(name string, config *schema.ServerEndpointRateLimit, defaults schema.ServerEndpointRateLimit, validator *schema.StructValidator) {

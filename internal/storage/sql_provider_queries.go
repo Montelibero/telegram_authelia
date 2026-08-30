@@ -68,7 +68,10 @@ const (
 	queryFmtConsumeIdentityVerification = `
 		UPDATE %s
 		SET consumed = ?, consumed_ip = ?
-		WHERE jti = ?;`
+		WHERE jti = ?
+		  AND consumed IS NULL
+		  AND revoked IS NULL
+		  AND exp >= ?;`
 
 	queryFmtRevokeIdentityVerification = `
 		UPDATE %s

@@ -1,7 +1,10 @@
 package middlewares
 
 import (
+	"context"
 	"crypto/x509"
+	"errors"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/regulation"
 	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/storage"
+	"github.com/authelia/authelia/v4/internal/telegram"
 	"github.com/authelia/authelia/v4/internal/templates"
 	"github.com/authelia/authelia/v4/internal/totp"
 	"github.com/authelia/authelia/v4/internal/webauthn"
@@ -45,7 +49,25 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	providers.SessionProvider = session.NewProvider(config.Session, caCertPool)
 	providers.TOTP = totp.NewTimeBasedProvider(config.TOTP)
 	providers.UserAttributeResolver = expression.NewUserAttributes(config)
-	providers.UserProvider = NewAuthenticationProvider(config, caCertPool)
+	providers.UserProvider = NewAuthenticationProvider(config, caCertPool, providers.StorageProvider)
+
+	if config.Telegram.Enabled {
+		store, usersOK := providers.StorageProvider.(telegram.IdentityUserStore)
+		links, linksOK := providers.StorageProvider.(telegram.IdentityLinkStore)
+		replay, replayOK := providers.StorageProvider.(telegram.StateReplayStore)
+		registrations, registrationsOK := providers.StorageProvider.(telegram.RegistrationStore)
+		if !usersOK || !linksOK || !replayOK || !registrationsOK || config.AuthenticationBackend.SQL == nil {
+			errs = append(errs, errors.New("configured storage provider is not compatible with Telegram identities"))
+		} else if client, err := telegram.NewClient(context.Background(), config.Telegram, nil); err != nil {
+			errs = append(errs, err)
+		} else {
+			states := telegram.NewStateStore(5*time.Minute, providers.Clock.Now, nil, []byte(config.Telegram.ClientSecret), replay)
+			registration := telegram.NewRegistrationService(registrations, config.AuthenticationBackend.SQL.GeneratedEmailDomain)
+			providers.Telegram = telegram.NewLoginServiceWithRegistration(client, states, store, registration)
+			providers.TelegramLink = telegram.NewLinkService(client, states, links)
+			providers.TelegramPasswordProof = telegram.NewPasswordProofService(client, states, links)
+		}
+	}
 
 	var err error
 	if providers.Templates, err = templates.New(templates.Config{EmailTemplatesPath: config.Notifier.TemplatePath}); err != nil {
@@ -83,12 +105,18 @@ func NewProvidersBasic() Providers {
 }
 
 // NewAuthenticationProvider returns a new authentication.UserProvider.
-func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider authentication.UserProvider) {
+func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool, stores ...storage.Provider) (provider authentication.UserProvider) {
 	switch {
 	case config.AuthenticationBackend.File != nil:
 		return authentication.NewFileUserProvider(config.AuthenticationBackend.File)
 	case config.AuthenticationBackend.LDAP != nil:
 		return authentication.NewLDAPUserProvider(config.AuthenticationBackend, caCertPool)
+	case config.AuthenticationBackend.SQL != nil && len(stores) == 1:
+		if store, ok := stores[0].(authentication.SQLUserStore); ok {
+			return authentication.NewSQLUserProvider(config.AuthenticationBackend.SQL, store, config.Applications, config.AccessControl.Rules)
+		}
+
+		return nil
 	default:
 		return nil
 	}

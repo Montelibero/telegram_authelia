@@ -10,6 +10,7 @@ import {
     getWebAuthnRegistrationOptions,
     getWebAuthnResult,
     postWebAuthnPasskeyResponse,
+    postWebAuthnReauthenticateResponse,
     postWebAuthnResponse,
     startWebAuthnRegistration,
     updateUserWebAuthnCredential,
@@ -120,6 +121,19 @@ it("handles webauthn response posting", async () => {
             targetURL: "url",
             userCode: "code",
         },
+        { signal: undefined },
+    );
+    expect(result).toBe("response");
+});
+
+it("posts a webauthn response as reauthentication", async () => {
+    (axios.post as any).mockResolvedValue("response");
+
+    const result = await postWebAuthnReauthenticateResponse("authResponse" as any);
+
+    expect(axios.post).toHaveBeenCalledWith(
+        "/webauthn/assertion",
+        { reauthenticate: true, response: "authResponse" },
         { signal: undefined },
     );
     expect(result).toBe("response");

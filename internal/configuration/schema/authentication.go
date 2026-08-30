@@ -16,6 +16,13 @@ type AuthenticationBackend struct {
 	// The file authentication backend configuration.
 	File *AuthenticationBackendFile `koanf:"file" yaml:"file,omitempty" toml:"file,omitempty" json:"file,omitempty" jsonschema:"title=File Backend" jsonschema_description:"The file authentication backend configuration."`
 	LDAP *AuthenticationBackendLDAP `koanf:"ldap" yaml:"ldap,omitempty" toml:"ldap,omitempty" json:"ldap,omitempty" jsonschema:"title=LDAP Backend" jsonschema_description:"The LDAP authentication backend configuration."`
+	SQL  *AuthenticationBackendSQL  `koanf:"sql" yaml:"sql,omitempty" toml:"sql,omitempty" json:"sql,omitempty" jsonschema:"title=SQL Backend" jsonschema_description:"The SQL authentication backend configuration."`
+}
+
+// AuthenticationBackendSQL represents the SQL authentication backend configuration.
+type AuthenticationBackendSQL struct {
+	GeneratedEmailDomain string                            `koanf:"generated_email_domain" yaml:"generated_email_domain,omitempty" toml:"generated_email_domain,omitempty" json:"generated_email_domain,omitempty" jsonschema:"title=Generated Email Domain" jsonschema_description:"The domain used to generate an email address when a user has no configured email."`
+	Password             AuthenticationBackendFilePassword `koanf:"password" yaml:"password,omitempty" toml:"password,omitempty" json:"password,omitempty" jsonschema:"title=Password Configuration" jsonschema_description:"The password hashing configuration for SQL users."`
 }
 
 // AuthenticationBackendPasswordChange represents the configuration related to password reset functionality.

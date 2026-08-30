@@ -20,6 +20,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/regulation"
 	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/storage"
+	"github.com/authelia/authelia/v4/internal/telegram"
 	"github.com/authelia/authelia/v4/internal/templates"
 	"github.com/authelia/authelia/v4/internal/totp"
 	"github.com/authelia/authelia/v4/internal/webauthn"
@@ -42,6 +43,9 @@ type Providers struct {
 	SessionProvider       *session.Provider
 	Regulator             *regulation.Regulator
 	OpenIDConnect         *oidc.OpenIDConnectProvider
+	Telegram              *telegram.LoginService
+	TelegramLink          *telegram.LinkService
+	TelegramPasswordProof *telegram.PasswordProofService
 	Metrics               metrics.Provider
 	NTP                   *ntp.Provider
 	UserProvider          authentication.UserProvider

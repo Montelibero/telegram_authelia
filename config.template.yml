@@ -692,6 +692,16 @@ identity_validation:
   # policy_url: ''
 
 ##
+## Applications Permission Management
+##
+## Applications are infrastructure metadata shown in the administrative permissions matrix. Access remains enforced by
+## normal Authelia groups and access_control rules. Omitting group uses app:<slug>; domain is optional display metadata;
+## omitting enabled means true.
+# applications:
+  # - slug: 'grafana'
+  #   name: 'Grafana'
+
+##
 ## Access Control Configuration
 ##
 ## Access control is a list of rules defining the authorizations applied for one resource to users or group of users.

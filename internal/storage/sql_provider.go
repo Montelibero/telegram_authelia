@@ -962,8 +962,21 @@ func (p *SQLProvider) SaveIdentityVerification(ctx context.Context, verification
 
 // ConsumeIdentityVerification marks an identity verification record in the storage provider as consumed.
 func (p *SQLProvider) ConsumeIdentityVerification(ctx context.Context, jti string, ip model.NullIP) (err error) {
-	if _, err = p.db.ExecContext(ctx, p.sqlConsumeIdentityVerification, time.Now(), ip, jti); err != nil {
+	now := time.Now()
+
+	result, err := p.db.ExecContext(ctx, p.sqlConsumeIdentityVerification, now, ip, jti, now)
+	if err != nil {
 		return fmt.Errorf("error consuming identity verification with jti '%s': %w", jti, err)
+	}
+
+	var affected int64
+
+	if affected, err = result.RowsAffected(); err != nil {
+		return fmt.Errorf("error checking consumed identity verification with jti '%s': %w", jti, err)
+	}
+
+	if affected != 1 {
+		return fmt.Errorf("identity verification with jti '%s' is not active", jti)
 	}
 
 	return nil
@@ -1054,6 +1067,32 @@ func (p *SQLProvider) ConsumeOneTimeCode(ctx context.Context, code *model.OneTim
 	}
 }
 
+// ConsumeTelegramState atomically consumes a Telegram OIDC state replay marker.
+func (p *SQLProvider) ConsumeTelegramState(ctx context.Context, signature string, consumedAt time.Time) (consumed bool, err error) {
+	query := p.db.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE signature = ? AND username = ? AND intent = ? AND expires >= ? AND consumed IS NULL AND revoked IS NULL`, tableOneTimeCode))
+	result, err := p.db.ExecContext(ctx, query, signature, "telegram", "telegram_state", consumedAt)
+	if err != nil {
+		return false, fmt.Errorf("error consuming Telegram state: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("error consuming Telegram state: %w", err)
+	}
+	if rows > 1 {
+		return false, fmt.Errorf("error consuming Telegram state: multiple rows affected")
+	}
+	return rows == 1, nil
+}
+
+// PurgeTelegramStates removes expired or terminal Telegram OIDC state replay markers.
+func (p *SQLProvider) PurgeTelegramStates(ctx context.Context, before time.Time) error {
+	query := p.db.Rebind(fmt.Sprintf(`DELETE FROM %s WHERE username = ? AND intent = ? AND (expires < ? OR consumed IS NOT NULL OR revoked IS NOT NULL)`, tableOneTimeCode))
+	if _, err := p.db.ExecContext(ctx, query, "telegram", "telegram_state", before); err != nil {
+		return fmt.Errorf("error purging Telegram states: %w", err)
+	}
+	return nil
+}
+
 // RevokeOneTimeCode revokes a one-time code in the storage provider using the public ID.
 func (p *SQLProvider) RevokeOneTimeCode(ctx context.Context, publicID uuid.UUID, ip model.IP) (err error) {
 	var (
@@ -1135,9 +1174,7 @@ func (p *SQLProvider) LoadOneTimeCodeByID(ctx context.Context, id int) (code *mo
 	return code, nil
 }
 
-// LoadOneTimeCodeByPublicID loads a one-time code from the storage provider given the public identifier.
-// This does not decrypt the code. This method SHOULD ONLY be used to find the One-Time Code for the
-// purpose of deletion.
+// LoadOneTimeCodeByPublicID loads and decrypts a one-time code from the storage provider given the public identifier.
 func (p *SQLProvider) LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUID) (code *model.OneTimeCode, err error) {
 	code = &model.OneTimeCode{}
 
@@ -1147,6 +1184,9 @@ func (p *SQLProvider) LoadOneTimeCodeByPublicID(ctx context.Context, id uuid.UUI
 		}
 
 		return nil, fmt.Errorf("error selecting one-time code: %w", err)
+	}
+	if code.Code, err = p.decrypt(code.Code); err != nil {
+		return nil, fmt.Errorf("error decrypting the one-time code value for user '%s' with signature '%s': %w", code.Username, code.Signature, err)
 	}
 
 	return code, nil

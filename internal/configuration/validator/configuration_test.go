@@ -54,6 +54,22 @@ func newDefaultConfig() schema.Configuration {
 	return config
 }
 
+func TestShouldValidateTelegramConfiguration(t *testing.T) {
+	validator := schema.NewStructValidator()
+	config := newDefaultConfig()
+	config.Telegram = schema.Telegram{
+		Enabled:      true,
+		Issuer:       &url.URL{Scheme: schemeHTTPS, Host: "oauth.telegram.org"},
+		ClientID:     "123456789",
+		ClientSecret: "secret",
+		CallbackURL:  &url.URL{Scheme: schemeHTTPS, Host: "auth.example.com", Path: "/api/telegram/callback"},
+	}
+
+	ValidateConfiguration(&config, validator)
+
+	require.Empty(t, validator.Errors())
+}
+
 func TestShouldEnsureNotifierConfigIsProvided(t *testing.T) {
 	validator := schema.NewStructValidator()
 	config := newDefaultConfig()

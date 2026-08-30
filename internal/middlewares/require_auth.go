@@ -11,8 +11,70 @@ import (
 // Require1FA check if user has enough permissions to execute the next handler.
 func Require1FA(next RequestHandler) RequestHandler {
 	return func(ctx *AutheliaCtx) {
-		if s, err := ctx.GetSession(); err != nil || s.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA) < authentication.OneFactor {
+		if s, err := ctx.GetSession(); err != nil || s.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA) < authentication.OneFactor || !validateMTLSession(ctx, &s) {
 			ctx.ReplyForbidden()
+			return
+		}
+
+		next(ctx)
+	}
+}
+
+func validateMTLSession(ctx *AutheliaCtx, userSession *session.UserSession) bool {
+	provider, managed := ctx.Providers.UserProvider.(interface{ IsMTLProvider() bool })
+	if !managed || !provider.IsMTLProvider() {
+		return true
+	}
+	if userSession.SessionEpoch == nil {
+		if destroyErr := ctx.DestroySession(); destroyErr != nil {
+			ctx.Logger.WithError(destroyErr).Error("Failed to destroy a legacy MTL user session")
+		}
+		return false
+	}
+	details, err := ctx.Providers.UserProvider.GetDetails(userSession.Username)
+	if err == nil && details.SessionEpoch != nil && *details.SessionEpoch == *userSession.SessionEpoch {
+		return true
+	}
+	if destroyErr := ctx.DestroySession(); destroyErr != nil {
+		ctx.Logger.WithError(destroyErr).Error("Failed to destroy a revoked user session")
+	}
+	return false
+}
+
+// RequirePasswordFactor requires the current session to include password authentication.
+func RequirePasswordFactor(next RequestHandler) RequestHandler {
+	return func(ctx *AutheliaCtx) {
+		userSession, err := ctx.GetSession()
+		if err != nil || !validateMTLSession(ctx, &userSession) || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+			ctx.ReplyForbidden()
+			return
+		}
+
+		next(ctx)
+	}
+}
+
+// RequireFreshPasswordElevation requires a recent password reauthentication and a valid user elevation.
+// Unlike RequireElevated, second-factor sessions never bypass these checks.
+func RequireFreshPasswordElevation(next RequestHandler) RequestHandler {
+	return func(ctx *AutheliaCtx) {
+		userSession, err := ctx.GetSession()
+		if err != nil || !validateMTLSession(ctx, &userSession) || !userSession.AuthenticationMethodRefs.UsernameAndPassword {
+			ctx.ReplyForbidden()
+			return
+		}
+
+		now := ctx.GetClock().Now()
+		lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
+		firstFactor := userSession.GetFirstFactorAuthn()
+		if lifespan <= 0 || firstFactor.IsZero() || firstFactor.After(now) || now.Sub(firstFactor) > lifespan || userSession.Elevations.User == nil {
+			if err = ctx.ReplyJSON(OKResponse{Status: "KO", Data: ElevatedForbiddenResponse{Elevation: true}}, fasthttp.StatusForbidden); err != nil {
+				ctx.Logger.WithError(err).Error("Error occurred encoding JSON response during a password elevation check.")
+			}
+			return
+		}
+
+		if !handleRequireElevatedShouldDoNextValidate(ctx, &userSession) {
 			return
 		}
 
@@ -34,6 +96,10 @@ func RequireElevated(next RequestHandler) RequestHandler {
 				ctx.Logger.WithError(err).Error("Error occurred encoding JSON response during an elevation check.")
 			}
 
+			return
+		}
+		if !validateMTLSession(ctx, &userSession) {
+			ctx.ReplyForbidden()
 			return
 		}
 
@@ -59,6 +125,10 @@ func handleRequireElevatedShouldDoNext(ctx *AutheliaCtx, userSession *session.Us
 	var err error
 
 	level := userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA)
+
+	if ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode && IsRecentFirstFactorAuthentication(ctx, userSession) {
+		return true
+	}
 
 	if ctx.Configuration.IdentityValidation.ElevatedSession.SkipSecondFactor && level >= authentication.TwoFactor {
 		ctx.Logger.WithFields(map[string]any{"user": userSession.Username}).Trace("The user session elevation was not checked as the user has performed second factor authentication and the policy to skip this is enabled.")
@@ -99,6 +169,15 @@ func handleRequireElevatedShouldDoNext(ctx *AutheliaCtx, userSession *session.Us
 	}
 
 	return handleRequireElevatedShouldDoNextValidate(ctx, userSession)
+}
+
+// IsRecentFirstFactorAuthentication returns true when the current session completed first-factor authentication within the configured elevation lifespan.
+func IsRecentFirstFactorAuthentication(ctx *AutheliaCtx, userSession *session.UserSession) bool {
+	now := ctx.GetClock().Now()
+	lifespan := ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan
+	firstFactor := userSession.GetFirstFactorAuthn()
+
+	return lifespan > 0 && !firstFactor.IsZero() && !firstFactor.After(now) && now.Sub(firstFactor) <= lifespan
 }
 
 func handleRequireElevatedShouldDoNextValidate(ctx *AutheliaCtx, userSession *session.UserSession) (doNext bool) {

@@ -13,7 +13,7 @@ import {
     SecondFactorTOTPSubRoute,
     SecondFactorWebAuthnSubRoute,
 } from "@constants/Routes";
-import { RedirectionURL } from "@constants/SearchParams";
+import { RedirectionURL, TelegramStatus } from "@constants/SearchParams";
 import { useLocalStorageMethodContext } from "@contexts/LocalStorageMethodContext";
 import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
@@ -37,6 +37,7 @@ export interface Props {
     rememberMe: boolean;
     resetPassword: boolean;
     resetPasswordCustomURL: string;
+    telegramLogin: boolean;
 }
 
 const RedirectionErrorMessage =
@@ -45,7 +46,8 @@ const RedirectionErrorMessage =
 const LoginPortal = function (props: Props) {
     const location = useLocation();
     const redirectionURL = useQueryParam(RedirectionURL);
-    const { createErrorNotification } = useNotifications();
+    const telegramStatus = useQueryParam(TelegramStatus);
+    const { createErrorNotification, createInfoNotification, createWarnNotification } = useNotifications();
     const [firstFactorDisabled, setFirstFactorDisabled] = useState(true);
     const [broadcastRedirect, setBroadcastRedirect] = useState(false);
     const redirector = useRedirector();
@@ -61,6 +63,14 @@ const LoginPortal = function (props: Props) {
     useEffect(() => {
         fetchState();
     }, [fetchState]);
+
+    useEffect(() => {
+        if (telegramStatus === "pending") {
+            createInfoNotification(translate("Your Telegram registration request is awaiting approval"), 10);
+        } else if (telegramStatus === "rejected") {
+            createWarnNotification(translate("Your Telegram registration request was rejected"), 10);
+        }
+    }, [telegramStatus, createInfoNotification, createWarnNotification, translate]);
 
     useEffect(() => {
         if (state && state.authentication_level >= AuthenticationLevel.OneFactor) {
@@ -126,7 +136,9 @@ const LoginPortal = function (props: Props) {
             } else {
                 const method = localStorageMethod || userInfo.method;
 
-                if (!state!.factor_knowledge) {
+                if (!redirectionURL) {
+                    navigate(AuthenticatedRoute, false);
+                } else if (!state!.factor_knowledge) {
                     navigate(`${SecondFactorRoute}${SecondFactorPasswordSubRoute}`);
                 } else if (method === SecondFactorMethod.WebAuthn) {
                     navigate(`${SecondFactorRoute}${SecondFactorWebAuthnSubRoute}`);
@@ -137,7 +149,7 @@ const LoginPortal = function (props: Props) {
                 }
             }
         }
-    }, [state, userInfo, configuration, navigate, localStorageMethod]);
+    }, [state, userInfo, configuration, navigate, localStorageMethod, redirectionURL]);
 
     useEffect(() => {
         (async function () {
@@ -198,6 +210,7 @@ const LoginPortal = function (props: Props) {
                             rememberMe={props.rememberMe}
                             resetPassword={props.resetPassword}
                             resetPasswordCustomURL={props.resetPasswordCustomURL}
+                            telegramLogin={props.telegramLogin}
                             onAuthenticationStart={() => setFirstFactorDisabled(true)}
                             onAuthenticationStop={() => setFirstFactorDisabled(false)}
                             onAuthenticationSuccess={handleAuthSuccess}

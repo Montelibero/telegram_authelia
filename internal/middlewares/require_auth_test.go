@@ -19,6 +19,86 @@ import (
 	"github.com/authelia/authelia/v4/internal/session"
 )
 
+type mtlTestUserProvider struct{ authentication.UserProvider }
+
+func (mtlTestUserProvider) IsMTLProvider() bool { return true }
+
+func TestRequire1FARejectsRevokedMTLSession(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+	sessionEpoch := 1
+	currentEpoch := 2
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.SessionEpoch = &sessionEpoch
+	userSession.AuthenticationMethodRefs.External = true
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+	mock.Ctx.Providers.UserProvider = mtlTestUserProvider{mock.UserProviderMock}
+	mock.UserProviderMock.EXPECT().GetDetails(john).Return(&authentication.UserDetails{Username: john, SessionEpoch: &currentEpoch}, nil)
+
+	middlewares.Require1FA(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	userSession, err = mock.Ctx.GetSession()
+	require.NoError(t, err)
+	assert.True(t, userSession.IsAnonymous())
+}
+
+func TestAuthenticatedMiddlewaresRejectRevokedMTLSession(t *testing.T) {
+	checks := map[string]func(middlewares.RequestHandler) middlewares.RequestHandler{
+		"password factor":          middlewares.RequirePasswordFactor,
+		"fresh password elevation": middlewares.RequireFreshPasswordElevation,
+		"elevated":                 middlewares.RequireElevated,
+	}
+	for name, check := range checks {
+		t.Run(name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+			sessionEpoch, currentEpoch := 1, 2
+			userSession, err := mock.Ctx.GetSession()
+			require.NoError(t, err)
+			userSession.Username = john
+			userSession.SessionEpoch = &sessionEpoch
+			userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+			require.NoError(t, mock.Ctx.SaveSession(userSession))
+			mock.Ctx.Providers.UserProvider = mtlTestUserProvider{mock.UserProviderMock}
+			mock.UserProviderMock.EXPECT().GetDetails(john).Return(&authentication.UserDetails{Username: john, SessionEpoch: &currentEpoch}, nil)
+
+			check(NilHandler)(mock.Ctx)
+
+			assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+		})
+	}
+}
+
+func TestRequire1FARejectsLegacyMTLSessionAndUpgradesLegacyLDAPSession(t *testing.T) {
+	t.Run("legacy MTL", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.External = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+		mock.Ctx.Providers.UserProvider = mtlTestUserProvider{mock.UserProviderMock}
+		middlewares.Require1FA(NilHandler)(mock.Ctx)
+		assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("legacy LDAP", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.External = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+		middlewares.Require1FA(NilHandler)(mock.Ctx)
+		assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	})
+}
+
 func TestRequireElevated(t *testing.T) {
 	type elevation struct {
 		id      int
@@ -254,6 +334,118 @@ func TestRequireElevated(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequirePasswordFactor(t *testing.T) {
+	t.Run("rejects a federated-only session", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.External = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequirePasswordFactor(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("accepts a password-authenticated session", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequirePasswordFactor(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	})
+}
+
+func TestRequireFreshPasswordElevation(t *testing.T) {
+	t.Run("rejects two factor session when elevation skip is configured", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.SkipSecondFactor = true
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+		mock.Ctx.Providers.Clock = &mock.Clock
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		userSession.AuthenticationMethodRefs.WebAuthn = true
+		userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequireFreshPasswordElevation(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("accepts a recent password authentication with valid elevation", func(t *testing.T) {
+		mock := mocks.NewMockAutheliaCtx(t)
+		defer mock.Close()
+		mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+		mock.Ctx.Providers.Clock = &mock.Clock
+		mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedFor, "127.0.0.1")
+		userSession, err := mock.Ctx.GetSession()
+		require.NoError(t, err)
+		userSession.Username = john
+		userSession.AuthenticationMethodRefs.UsernameAndPassword = true
+		userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+		userSession.Elevations.User = &session.Elevation{ID: 1, Expires: mock.Clock.Now().Add(time.Minute), RemoteIP: net.ParseIP("127.0.0.1")}
+		require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+		middlewares.RequireFreshPasswordElevation(NilHandler)(mock.Ctx)
+
+		assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+	})
+}
+
+func TestRequireElevatedAcceptsFreshExternalAuthenticationWhenOneTimeCodesDisabled(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+	mock.Ctx.Providers.Clock = &mock.Clock
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.AuthenticationMethodRefs.External = true
+	userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Unix()
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	middlewares.RequireElevated(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+}
+
+func TestRequireElevatedRejectsExpiredExternalAuthenticationWhenOneTimeCodesDisabled(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.DisableOneTimeCode = true
+	mock.Ctx.Configuration.IdentityValidation.ElevatedSession.ElevationLifespan = time.Minute
+	mock.Ctx.Providers.Clock = &mock.Clock
+
+	userSession, err := mock.Ctx.GetSession()
+	require.NoError(t, err)
+	userSession.Username = john
+	userSession.AuthenticationMethodRefs.External = true
+	userSession.FirstFactorAuthnTimestamp = mock.Clock.Now().Add(-2 * time.Minute).Unix()
+	require.NoError(t, mock.Ctx.SaveSession(userSession))
+
+	middlewares.RequireElevated(NilHandler)(mock.Ctx)
+
+	assert.Equal(t, fasthttp.StatusForbidden, mock.Ctx.Response.StatusCode())
 }
 
 func NilHandler(ctx *middlewares.AutheliaCtx) {

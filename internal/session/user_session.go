@@ -31,9 +31,17 @@ func (s *UserSession) AuthenticationLevel(passkey2FA bool) authentication.Level 
 		return authentication.TwoFactor
 	case s.AuthenticationMethodRefs.FactorPossession() || s.AuthenticationMethodRefs.FactorKnowledge():
 		return authentication.OneFactor
+	case s.AuthenticationMethodRefs.External:
+		return authentication.OneFactor
 	default:
 		return authentication.NotAuthenticated
 	}
+}
+
+// SetOneFactorExternal sets the expected values for federated first-factor authentication.
+func (s *UserSession) SetOneFactorExternal(now time.Time, details *authentication.UserDetails) {
+	s.setOneFactor(now, details, false)
+	s.AuthenticationMethodRefs.External = true
 }
 
 // SetOneFactorPassword sets the 1FA AMR's and expected property values for one factor password authentication.
@@ -68,6 +76,21 @@ func (s *UserSession) SetOneFactorReauthenticate(now time.Time, details *authent
 	s.DisplayName = details.DisplayName
 	s.Groups = details.Groups
 	s.Emails = details.Emails
+	s.SessionEpoch = details.SessionEpoch
+}
+
+// SetPasswordReauthenticate refreshes the profile and records a successful password proof without replacing the original login method.
+func (s *UserSession) SetPasswordReauthenticate(now time.Time, details *authentication.UserDetails) {
+	s.SetOneFactorReauthenticate(now, details)
+	s.AuthenticationMethodRefs.KnowledgeBasedAuthentication = true
+	s.AuthenticationMethodRefs.UsernameAndPassword = true
+}
+
+// SetPasskeyReauthenticate records a successful passkey proof without replacing the original login method.
+func (s *UserSession) SetPasskeyReauthenticate(now time.Time, hardware, userPresence, userVerified bool) {
+	s.FirstFactorAuthnTimestamp = now.Unix()
+	s.LastActivity = now.Unix()
+	s.setWebAuthn(hardware, userPresence, userVerified)
 }
 
 // SetTwoFactorTOTP sets the relevant TOTP AMR's and sets the factor to 2FA.

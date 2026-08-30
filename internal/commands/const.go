@@ -11,6 +11,13 @@ const (
 )
 
 const (
+	cmdAutheliaStorageUserImportShort = "Import users from an Authelia YAML user database"
+	cmdAutheliaStorageUserImportLong  = `Import users from users_database.yml into the SQL authentication backend.
+
+The import is idempotent and validates all conflicts before writing. Use --dry-run to produce the same report without creating users.`
+)
+
+const (
 	fmtCmdAutheliaShort = "authelia %s"
 
 	fmtCmdAutheliaLong = `authelia %s
@@ -823,6 +830,8 @@ const (
 	cmdFlagNameNewEncryptionKey = "new-encryption-key"
 
 	cmdFlagNameFile        = "file"
+	cmdFlagNameFrom        = "from"
+	cmdFlagNameDryRun      = "dry-run"
 	cmdFlagNameModeFiles   = "mode-files"
 	cmdFlagNameUsers       = "users"
 	cmdFlagNameServices    = "services"

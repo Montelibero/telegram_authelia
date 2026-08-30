@@ -11,6 +11,8 @@ export interface AutheliaState {
     username: string;
     authentication_level: AuthenticationLevel;
     factor_knowledge: boolean;
+    administrator?: boolean;
+    manager?: boolean;
     default_redirection_url?: string;
 }
 

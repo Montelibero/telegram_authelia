@@ -10,6 +10,12 @@ export const OpenIDConnectDeviceAuthorizationPath = basePath + "/api/oidc/device
 export const FirstFactorPath = basePath + "/api/firstfactor";
 export const FirstFactorPasskeyPath = basePath + "/api/firstfactor/passkey";
 export const FirstFactorReauthenticatePath = basePath + "/api/firstfactor/reauthenticate";
+export const TelegramLoginPath = basePath + "/api/telegram/login";
+export const TelegramLinkPath = basePath + "/api/telegram/link";
+export const TelegramLinkStatusPath = basePath + "/api/telegram/link/status";
+export const SelfServiceProfilePath = basePath + "/api/self-service/profile";
+export const SelfServicePasswordPath = basePath + "/api/self-service/password";
+export const SelfServicePasswordTelegramPath = basePath + "/api/self-service/password/telegram";
 
 export const TOTPRegistrationPath = basePath + "/api/secondfactor/totp/register";
 export const TOTPConfigurationPath = basePath + "/api/secondfactor/totp";
@@ -39,6 +45,24 @@ export const StatePath = basePath + "/api/state";
 export const UserInfoPath = basePath + "/api/user/info";
 export const UserInfo2FAMethodPath = basePath + "/api/user/info/2fa_method";
 export const UserSessionElevationPath = basePath + "/api/user/session/elevation";
+
+export const AdminPath = basePath + "/api/admin";
+export const AdminUsersPath = basePath + "/api/admin/users";
+export const AdminUserPath = basePath + "/api/admin/user";
+export const AdminUserEmailPath = basePath + "/api/admin/users/email";
+export const AdminUserPrimaryEmailPath = basePath + "/api/admin/users/email/primary";
+export const AdminUserIdentityPath = basePath + "/api/admin/users/identity";
+export const AdminUserSetupLinkPath = basePath + "/api/admin/users/setup-link";
+export const AdminGroupsPath = basePath + "/api/admin/groups";
+export const AdminGroupPath = basePath + "/api/admin/group";
+export const AdminGroupUserPath = basePath + "/api/admin/group/user";
+export const AdminGroupManagerPath = basePath + "/api/admin/group/manager";
+export const AdminRegistrationsPath = basePath + "/api/admin/registrations";
+export const AdminRegistrationPath = basePath + "/api/admin/registration";
+export const AdminRegistrationApprovePath = basePath + "/api/admin/registration/approve";
+export const AdminRegistrationRejectPath = basePath + "/api/admin/registration/reject";
+export const AdminApplicationsPath = basePath + "/api/admin/applications";
+export const AdminApplicationUserPath = basePath + "/api/admin/application/user";
 
 export const ConfigurationPath = basePath + "/api/configuration";
 export const PasswordPolicyConfigurationPath = basePath + "/api/configuration/password-policy";

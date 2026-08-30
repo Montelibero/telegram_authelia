@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
@@ -39,6 +40,11 @@ func (s *LogoutSuite) TestShouldDestroySession() {
 	// Reset the cookie, meaning it resets the value and expires the cookie by setting
 	// date to one minute in the past.
 	assert.True(s.T(), strings.HasPrefix(string(b), "authelia_session=;"))
+	entry := s.mock.Hook.LastEntry()
+	s.Require().NotNil(entry)
+	s.Equal(logrus.InfoLevel, entry.Level)
+	s.Equal("User logged out", entry.Message)
+	s.Equal(testUsername, entry.Data["username"])
 }
 
 func TestRunLogoutSuite(t *testing.T) {

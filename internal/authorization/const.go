@@ -4,6 +4,8 @@ package authorization
 type Level int
 
 const (
+	// AMRFederated indicates authentication performed by an external identity provider.
+	AMRFederated = "federated"
 	// Bypass bypass level.
 	Bypass Level = iota
 

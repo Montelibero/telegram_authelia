@@ -87,9 +87,9 @@ const (
 
 // Authentication Backend Error constants.
 const (
-	errFmtAuthBackendNotConfigured = "authentication_backend: you must ensure either the 'file' or 'ldap' " +
+	errFmtAuthBackendNotConfigured = "authentication_backend: you must ensure one of the 'file', 'ldap', or 'sql' " +
 		"authentication backend is configured"
-	errFmtAuthBackendMultipleConfigured = "authentication_backend: please ensure only one of the 'file' or 'ldap' " +
+	errFmtAuthBackendMultipleConfigured = "authentication_backend: please ensure only one of the 'file', 'ldap', or 'sql' " +
 		"backend is configured"
 	errFmtAuthBackendRefreshInterval = "authentication_backend: option 'refresh_interval' is configured to '%s' but " +
 		"it must be either in duration common syntax or one of 'disable', or 'always': %w"
@@ -102,8 +102,9 @@ const (
 	errFmtFileAuthBackendExtraAttributeReserved         = "authentication_backend: file: extra_attributes: %s: attribute name '%s' is reserved"
 	errFmtFileAuthBackendPasswordUnknownAlg             = "authentication_backend: file: password: option 'algorithm' " +
 		errSuffixMustBeOneOf
-	errFmtFileAuthBackendPassword               = "authentication_backend: file: password: %s: "
-	errFmtFileAuthBackendPasswordInvalidVariant = errFmtFileAuthBackendPassword +
+	errFmtFileAuthBackendPassword                         = "authentication_backend: file: password: %s: "
+	errFmtSQLAuthBackendGeneratedEmailDomainNotConfigured = "authentication_backend: sql: option 'generated_email_domain' is required"
+	errFmtFileAuthBackendPasswordInvalidVariant           = errFmtFileAuthBackendPassword +
 		"option 'variant' " + errSuffixMustBeOneOf
 	errFmtFileAuthBackendPasswordOptionInvalid = errFmtFileAuthBackendPassword +
 		"option '%s' is configured as '%d' but must be '%d' when '%s' is set to '%v'"

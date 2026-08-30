@@ -56,6 +56,41 @@ func TestLoadProvidersStorageRunE(t *testing.T) {
 	assert.Nil(t, ctx.providers.StorageProvider)
 }
 
+func TestRunStorageUserImportDryRun(t *testing.T) {
+	ctx := context.Background()
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	buf := &bytes.Buffer{}
+
+	err := runStorageUserImport(ctx, buf, store, filepath.Join("testdata", "users_database.yml"), "eurmtl.me", true)
+	require.NoError(t, err)
+	assert.Equal(t, "SQL user import: dry-run=true created=1 unchanged=0 conflicts=0\nCreated: bublik\n", buf.String())
+
+	_, found, err := store.LoadMTLUser(ctx, "bublik")
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+func TestRunStorageUserIdentityLifecycle(t *testing.T) {
+	ctx := context.Background()
+	config := &schema.Configuration{Storage: schema.Storage{Local: &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")}}}
+	store := storage.NewSQLiteProvider(config)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	require.NoError(t, store.MigrateMTL(ctx))
+	require.NoError(t, store.ImportMTLUsers(ctx, []model.MTLUserImport{{Username: "bublik", DisplayName: "Bublik", Emails: []model.MTLUserImportEmail{{Email: "bublik@eurmtl.me", Primary: true}}}}))
+	buf := &bytes.Buffer{}
+
+	require.NoError(t, runStorageUserIdentityLink(ctx, buf, store, "bublik", "telegram", "987654321", "bublik_tg"))
+	assert.Equal(t, "Linked telegram identity to user bublik.\n", buf.String())
+	buf.Reset()
+	require.NoError(t, runStorageUserIdentityShow(ctx, buf, store, "bublik", "telegram"))
+	assert.Equal(t, "User: bublik\nProvider: telegram\nProvider user ID: 987654321\nProvider username: bublik_tg\n", buf.String())
+	buf.Reset()
+	require.NoError(t, runStorageUserIdentityUnlink(ctx, buf, store, "bublik", "telegram"))
+	assert.Equal(t, "Unlinked telegram identity from user bublik.\n", buf.String())
+}
+
 func TestCmdCtx_ConfigValidateStorageRunE(t *testing.T) {
 	dir := t.TempDir()
 
