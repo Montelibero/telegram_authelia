@@ -1,0 +1,39 @@
+server:
+  address: tcp://:9091
+
+log:
+  level: debug
+
+identity_validation:
+  reset_password:
+    jwt_secret: rehearsal-jwt-secret-not-for-production-0123456789abcdef
+
+authentication_backend:
+  password_reset:
+    disable: true
+  file:
+    path: /config/users_database.yml
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain: app.rehearsal.test
+      subject: group:app:diagnostic
+      policy: one_factor
+
+session:
+  secret: rehearsal-session-secret-not-for-production-0123456789abcdef0123456789abcdef
+  cookies:
+    - domain: rehearsal.test
+      authelia_url: https://auth.rehearsal.test:8443
+      default_redirection_url: https://app.rehearsal.test:8443
+      same_site: lax
+
+storage:
+  encryption_key: rehearsal-storage-key-not-for-production-0123456789abcdef
+  local:
+    path: /config-data/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config-data/notification.txt

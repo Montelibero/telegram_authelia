@@ -1,0 +1,26 @@
+users:
+  rehearsal-admin:
+    password: "$argon2id$v=19$m=65536,t=3,p=4$9l72yln2/K112UdKEzc79Q$f+SW4BQ3XF0CRrIAQbG3URMW/XYwpkbUTY8RfeB+F6I"
+    displayname: Rehearsal Admin
+    email: admin@example.test
+    groups:
+      - admins
+      - app:diagnostic
+    disabled: false
+  rehearsal-user:
+    password: "$argon2id$v=19$m=65536,t=3,p=4$mTkkYIWnG3ouZFhS2bF/dg$hikIa2EaaPIPF2OS3qWYjqqv2Gtzs1tYYM4DKZINu8E"
+    displayname: Rehearsal User
+    groups:
+      - app:diagnostic
+    disabled: false
+  rehearsal-denied:
+    password: "$argon2id$v=19$m=65536,t=3,p=4$mTkkYIWnG3ouZFhS2bF/dg$hikIa2EaaPIPF2OS3qWYjqqv2Gtzs1tYYM4DKZINu8E"
+    displayname: Rehearsal Denied
+    groups: []
+    disabled: false
+  rehearsal-disabled:
+    password: "$argon2id$v=19$m=65536,t=3,p=4$DiO6DS1c95nL24H/D872Zg$e3K9Leb6wVfsrc18g4Zty5siJb8Bece9SysE9QSOkWg"
+    displayname: Rehearsal Disabled
+    groups:
+      - app:diagnostic
+    disabled: true
