@@ -71,8 +71,19 @@ it("renders administrator navigation for administrators", async () => {
 
     expect(screen.getByText("Users")).toBeInTheDocument();
     expect(screen.getByText("Pending registrations")).toBeInTheDocument();
-    expect(screen.queryByText("Groups")).not.toBeInTheDocument();
+    expect(screen.getByText("Groups")).toBeInTheDocument();
     expect(screen.getByText("Permissions")).toBeInTheDocument();
+});
+
+it("renders scoped manager navigation without full administrator permissions", async () => {
+    await act(async () => {
+        render(<SettingsLayout manager />);
+    });
+
+    expect(screen.getByText("Users")).toBeInTheDocument();
+    expect(screen.getByText("Pending registrations")).toBeInTheDocument();
+    expect(screen.getByText("Groups")).toBeInTheDocument();
+    expect(screen.queryByText("Permissions")).not.toBeInTheDocument();
 });
 
 it("sets the document title", async () => {

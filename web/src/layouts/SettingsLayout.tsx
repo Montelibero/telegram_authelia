@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 
 import { EncodedName } from "@constants/constants";
 import {
+    AdminGroupsSubRoute,
     AdminPendingSubRoute,
     AdminPermissionsSubRoute,
     AdminUsersSubRoute,
@@ -40,6 +41,7 @@ import { useRouterNavigate } from "@hooks/RouterNavigate";
 
 export interface Props {
     administrator?: boolean;
+    manager?: boolean;
     children?: ReactNode;
     drawerWidth?: number;
 }
@@ -78,7 +80,11 @@ const SettingsLayout = function (props: Props) {
             <Divider />
             <List>
                 {navItems
-                    .filter((item) => !item.administrator || props.administrator)
+                    .filter(
+                        (item) =>
+                            (!item.adminAccess || props.administrator || props.manager) &&
+                            (!item.administrator || props.administrator),
+                    )
                     .map((item) => (
                         <DrawerNavItem
                             key={item.keyname}
@@ -142,6 +148,7 @@ const SettingsLayout = function (props: Props) {
 };
 
 interface NavItem {
+    adminAccess?: boolean;
     administrator?: boolean;
     keyname: string;
     text: string;
@@ -158,18 +165,25 @@ const navItems: NavItem[] = [
         text: "Security",
     },
     {
-        administrator: true,
+        adminAccess: true,
         icon: <ManageAccounts color={"primary"} />,
         keyname: "admin-users",
         pathname: `${SettingsRoute}${AdminUsersSubRoute}`,
         text: "Users",
     },
     {
-        administrator: true,
+        adminAccess: true,
         icon: <HowToReg color={"primary"} />,
         keyname: "admin-pending",
         pathname: `${SettingsRoute}${AdminPendingSubRoute}`,
         text: "Pending registrations",
+    },
+    {
+        adminAccess: true,
+        icon: <Rule color={"primary"} />,
+        keyname: "admin-groups",
+        pathname: `${SettingsRoute}${AdminGroupsSubRoute}`,
+        text: "Groups",
     },
     {
         administrator: true,

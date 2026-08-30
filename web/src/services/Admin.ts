@@ -3,6 +3,7 @@ import axios, { AxiosRequestConfig } from "axios";
 import {
     AdminApplicationUserPath,
     AdminApplicationsPath,
+    AdminGroupManagerPath,
     AdminGroupPath,
     AdminGroupUserPath,
     AdminGroupsPath,
@@ -94,6 +95,8 @@ export interface AdminUserSetupLink {
 export interface AdminStatus {
     username: string;
     mutation_ready: boolean;
+    full_administrator?: boolean;
+    managed_groups?: string[];
 }
 
 export interface AdminRegistration {
@@ -130,6 +133,7 @@ export interface AdminGroupSummary {
 
 export interface AdminGroupDetails extends AdminGroupSummary {
     users: string[];
+    managers?: string[];
 }
 
 export interface AdminGroupWarning {
@@ -326,6 +330,22 @@ export function removeAdminGroupUser(name: string, username: string, expectedVer
         data: { confirm_username: confirmUsername, expected_version: expectedVersion, name, username },
         method: "DELETE",
         url: AdminGroupUserPath,
+    });
+}
+
+export function addAdminGroupManager(name: string, username: string, expectedVersion: number) {
+    return adminRequest<AdminGroupDetails>({
+        data: { expected_version: expectedVersion, name, username },
+        method: "PUT",
+        url: AdminGroupManagerPath,
+    });
+}
+
+export function removeAdminGroupManager(name: string, username: string, expectedVersion: number) {
+    return adminRequest<AdminGroupDetails>({
+        data: { expected_version: expectedVersion, name, username },
+        method: "DELETE",
+        url: AdminGroupManagerPath,
     });
 }
 

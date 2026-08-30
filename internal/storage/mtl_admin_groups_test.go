@@ -97,6 +97,53 @@ func TestMTLAdminGroupConflictsAndAudit(t *testing.T) {
 	assert.Equal(t, 1, events)
 }
 
+func TestMTLAdminGroupManagerLifecycle(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := t.Context()
+
+	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com"}, "")
+	require.NoError(t, err)
+	_, err = provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "manager", Email: "manager@example.com"}, "admin")
+	require.NoError(t, err)
+	group, err := provider.CreateMTLAdminGroup(ctx, "app:grafana", "admin")
+	require.NoError(t, err)
+
+	group, err = provider.AddMTLAdminGroupManager(ctx, group.Name, "manager", group.Version, "admin")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"manager"}, group.Managers)
+
+	managed, err := provider.ListMTLManagedGroups(ctx, "manager")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"app:grafana"}, managed)
+
+	group, err = provider.RemoveMTLAdminGroupManager(ctx, group.Name, "manager", group.Version, "admin")
+	require.NoError(t, err)
+	assert.Empty(t, group.Managers)
+
+	managed, err = provider.ListMTLManagedGroups(ctx, "manager")
+	require.NoError(t, err)
+	assert.Empty(t, managed)
+
+	var events int
+	require.NoError(t, provider.db.Get(&events, `SELECT COUNT(*) FROM mtl_audit_events WHERE event_type IN ('group.manager_added', 'group.manager_removed')`))
+	assert.Equal(t, 2, events)
+}
+
+func TestMTLAdminGroupManagerConflicts(t *testing.T) {
+	provider := newTestMTLUserProvider(t)
+	ctx := t.Context()
+
+	_, err := provider.CreateMTLAdminUser(ctx, model.MTLAdminUserCreate{Username: "admin", Email: "admin@example.com"}, "")
+	require.NoError(t, err)
+	group, err := provider.CreateMTLAdminGroup(ctx, "app:grafana", "admin")
+	require.NoError(t, err)
+
+	_, err = provider.AddMTLAdminGroupManager(ctx, group.Name, "missing", group.Version, "admin")
+	assert.ErrorIs(t, err, ErrMTLUserNotFound)
+	_, err = provider.RemoveMTLAdminGroupManager(ctx, group.Name, "admin", group.Version, "admin")
+	assert.ErrorIs(t, err, ErrMTLMembershipNotFound)
+}
+
 func TestMTLAdminGroupMembershipFailuresRollBack(t *testing.T) {
 	provider := newTestMTLUserProvider(t)
 	ctx := t.Context()

@@ -40,29 +40,52 @@ const SettingsRouter = function () {
     }, [state, fetchStateError, navigate]);
 
     useEffect(() => {
-        const adminRoute = [
-            AdminUsersSubRoute,
-            AdminPendingSubRoute,
-            AdminGroupsSubRoute,
-            AdminPermissionsSubRoute,
-        ].some((route) => location.pathname.endsWith(route));
-        if (state && adminRoute && !state.administrator) {
+        const delegatedAdminRoute = [AdminUsersSubRoute, AdminPendingSubRoute, AdminGroupsSubRoute].some((route) =>
+            location.pathname.endsWith(route),
+        );
+        const fullAdminRoute = location.pathname.endsWith(AdminPermissionsSubRoute);
+        if (
+            state &&
+            ((delegatedAdminRoute && !state.administrator && !state.manager) ||
+                (fullAdminRoute && !state.administrator))
+        ) {
             navigate(SettingsRoute);
         }
     }, [location.pathname, navigate, state]);
 
     return (
-        <SettingsLayout administrator={Boolean(state?.administrator)}>
+        <SettingsLayout administrator={Boolean(state?.administrator)} manager={Boolean(state?.manager)}>
             <Routes>
                 <Route path={IndexRoute} element={<SettingsView />} />
                 <Route path={SecuritySubRoute} element={<SecurityView />} />
                 <Route path={SettingsTwoFactorAuthenticationSubRoute} element={<TwoFactorAuthenticationView />} />
-                {state?.administrator ? (
-                    <Route path={AdminUsersSubRoute} element={<UsersView currentUsername={state.username} />} />
+                {state?.administrator || state?.manager ? (
+                    <Route
+                        path={AdminUsersSubRoute}
+                        element={
+                            <UsersView
+                                currentUsername={state.username}
+                                fullAdministrator={Boolean(state.administrator)}
+                            />
+                        }
+                    />
                 ) : null}
-                {state?.administrator ? <Route path={AdminPendingSubRoute} element={<PendingView />} /> : null}
-                {state?.administrator ? (
-                    <Route path={AdminGroupsSubRoute} element={<GroupsView currentUsername={state.username} />} />
+                {state?.administrator || state?.manager ? (
+                    <Route
+                        path={AdminPendingSubRoute}
+                        element={<PendingView fullAdministrator={Boolean(state.administrator)} />}
+                    />
+                ) : null}
+                {state?.administrator || state?.manager ? (
+                    <Route
+                        path={AdminGroupsSubRoute}
+                        element={
+                            <GroupsView
+                                currentUsername={state.username}
+                                fullAdministrator={Boolean(state.administrator)}
+                            />
+                        }
+                    />
                 ) : null}
                 {state?.administrator ? <Route path={AdminPermissionsSubRoute} element={<PermissionsView />} /> : null}
             </Routes>

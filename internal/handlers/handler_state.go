@@ -21,11 +21,14 @@ func StateGET(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
+	administrator := slices.Contains(userSession.Groups, "admins")
+	managedGroups, _ := middlewares.LoadMTLManagedGroups(ctx, userSession.Username)
 	stateResponse := StateResponse{
 		Username:            userSession.Username,
 		AuthenticationLevel: userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA),
 		FactorKnowledge:     userSession.AuthenticationMethodRefs.FactorKnowledge(),
-		Administrator:       slices.Contains(userSession.Groups, "admins"),
+		Administrator:       administrator,
+		Manager:             !administrator && len(managedGroups) != 0,
 	}
 
 	if uri := ctx.GetDefaultRedirectionURL(); uri != nil {

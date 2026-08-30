@@ -49,9 +49,10 @@ import { isAdminMutationAuthenticationError, useAdminMutationLock } from "@views
 
 interface UsersViewProps {
     currentUsername: string;
+    fullAdministrator?: boolean;
 }
 
-const UsersView = function ({ currentUsername }: UsersViewProps) {
+const UsersView = function ({ currentUsername, fullAdministrator = true }: UsersViewProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [users, setUsers] = useState<AdminUserSummary[]>([]);
@@ -189,6 +190,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                         availableGroups={permissionGroups}
                         key={`${selected.username}:${selected.version}`}
                         details={selected}
+                        fullAdministrator={fullAdministrator}
                         currentUsername={currentUsername}
                         lockMutations={mutationLock.lock}
                         mutationsUnlocked={mutationLock.unlocked}
@@ -201,6 +203,7 @@ const UsersView = function ({ currentUsername }: UsersViewProps) {
                 open={createOpen}
                 close={() => setCreateOpen(false)}
                 lockMutations={mutationLock.lock}
+                requireGroup={!fullAdministrator}
                 created={async (details) => {
                     setSelected(details);
                     await loadUsers();
@@ -214,6 +217,7 @@ interface UserDetailsProps {
     availableGroups: string[];
     currentUsername: string;
     details: AdminUserDetails;
+    fullAdministrator: boolean;
     lockMutations: () => void;
     mutationsUnlocked: boolean;
     applyDetails: (_operation: () => Promise<AdminUserDetails>) => Promise<void>;
@@ -224,6 +228,7 @@ const UserDetails = function ({
     availableGroups,
     currentUsername,
     details,
+    fullAdministrator,
     lockMutations,
     mutationsUnlocked,
 }: UserDetailsProps) {
@@ -240,6 +245,10 @@ const UserDetails = function ({
     const selfDisableRequiresConfirmation = details.username === currentUsername && status === "disabled";
     const lastLoginUnlinkRequiresConfirmation =
         details.username === currentUsername && !details.password_enabled && details.identities.length === 1;
+    const canEditProfile = fullAdministrator || details.groups.some((group) => availableGroups.includes(group));
+    const canEditGlobal =
+        fullAdministrator ||
+        (details.groups.length > 0 && details.groups.every((group) => availableGroups.includes(group)));
 
     const generateLink = useCallback(async () => {
         try {
@@ -277,11 +286,13 @@ const UserDetails = function ({
                             {details.password_enabled ? <Chip label={translate("Password enabled")} /> : null}
                         </Stack>
                         <TextField
+                            disabled={!canEditProfile}
                             label={translate("Display name")}
                             value={displayName}
                             onChange={(event) => setDisplayName(event.target.value)}
                         />
                         <TextField
+                            disabled={!canEditGlobal}
                             label={translate("Status")}
                             select
                             value={status}
@@ -291,6 +302,7 @@ const UserDetails = function ({
                             <MenuItem value="disabled">{translate("Disabled")}</MenuItem>
                         </TextField>
                         <TextField
+                            disabled={!canEditGlobal}
                             label={translate("Confirmation username")}
                             value={confirmation}
                             helperText={translate("Required for changes that can remove your own access")}
@@ -298,7 +310,11 @@ const UserDetails = function ({
                         />
                         <Button
                             variant="contained"
-                            disabled={selfDisableRequiresConfirmation && !confirmed}
+                            disabled={
+                                !canEditProfile ||
+                                (status !== details.status && !canEditGlobal) ||
+                                (selfDisableRequiresConfirmation && !confirmed)
+                            }
                             onClick={() =>
                                 applyDetails(() =>
                                     updateAdminUser(
@@ -326,7 +342,7 @@ const UserDetails = function ({
                                 {email.primary ? <Chip label={translate("Primary")} size="small" /> : null}
                                 <Button
                                     aria-label={"Make primary " + email.email}
-                                    disabled={email.primary}
+                                    disabled={!canEditGlobal || email.primary}
                                     onClick={() =>
                                         applyDetails(() =>
                                             setAdminUserPrimaryEmail(details.username, email.email, details.version),
@@ -338,6 +354,7 @@ const UserDetails = function ({
                                 <Button
                                     aria-label={"Delete " + email.email}
                                     color="error"
+                                    disabled={!canEditProfile || (email.primary && !canEditGlobal)}
                                     onClick={() =>
                                         applyDetails(() =>
                                             deleteAdminUserEmail(details.username, email.email, details.version),
@@ -350,13 +367,14 @@ const UserDetails = function ({
                         ))}
                         <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
                             <TextField
+                                disabled={!canEditProfile}
                                 label={translate("New email")}
                                 value={newEmail}
                                 onChange={(event) => setNewEmail(event.target.value)}
                                 fullWidth
                             />
                             <Button
-                                disabled={!newEmail}
+                                disabled={!canEditProfile || !newEmail}
                                 onClick={() =>
                                     applyDetails(() =>
                                         addAdminUserEmail(details.username, newEmail, details.version, false),
@@ -411,7 +429,7 @@ const UserDetails = function ({
                                 <Button
                                     aria-label={"Unlink " + identity.provider}
                                     color="error"
-                                    disabled={lastLoginUnlinkRequiresConfirmation && !confirmed}
+                                    disabled={!canEditGlobal || (lastLoginUnlinkRequiresConfirmation && !confirmed)}
                                     onClick={() =>
                                         applyDetails(() =>
                                             unlinkAdminUserIdentity(
@@ -429,6 +447,7 @@ const UserDetails = function ({
                         ))}
                         <Stack direction={{ sm: "row", xs: "column" }} spacing={1}>
                             <TextField
+                                disabled={!canEditGlobal}
                                 fullWidth
                                 label={translate("Telegram ID")}
                                 value={telegramID}
@@ -436,7 +455,9 @@ const UserDetails = function ({
                                 onChange={(event) => setTelegramID(event.target.value)}
                             />
                             <Button
-                                disabled={!telegramID.trim() || telegramID.trim() === details.telegram_id}
+                                disabled={
+                                    !canEditGlobal || !telegramID.trim() || telegramID.trim() === details.telegram_id
+                                }
                                 onClick={() =>
                                     applyDetails(() =>
                                         linkAdminUserTelegram(details.username, telegramID, details.version),
@@ -447,7 +468,11 @@ const UserDetails = function ({
                             </Button>
                         </Stack>
                         <Divider />
-                        <Button variant="outlined" onClick={() => generateLink().catch(console.error)}>
+                        <Button
+                            variant="outlined"
+                            disabled={!canEditGlobal}
+                            onClick={() => generateLink().catch(console.error)}
+                        >
                             {translate("Generate setup link")}
                         </Button>
                         {setupLink ? (
@@ -478,9 +503,17 @@ interface CreateUserDialogProps {
     close: () => void;
     created: (_details: AdminUserDetails) => Promise<void>;
     lockMutations: () => void;
+    requireGroup: boolean;
 }
 
-const CreateUserDialog = function ({ availableGroups, close, created, lockMutations, open }: CreateUserDialogProps) {
+const CreateUserDialog = function ({
+    availableGroups,
+    close,
+    created,
+    lockMutations,
+    open,
+    requireGroup,
+}: CreateUserDialogProps) {
     const { t: translate } = useTranslation("settings");
     const { createErrorNotification, createSuccessNotification } = useNotifications();
     const [form, setForm] = useState<AdminUserCreate>({
@@ -595,7 +628,11 @@ const CreateUserDialog = function ({ availableGroups, close, created, lockMutati
                 <Button onClick={handleClose}>{translate("Cancel")}</Button>
                 <Button
                     variant="contained"
-                    disabled={Boolean(setupLink) || (!form.email.trim() && !form.telegram_id?.trim())}
+                    disabled={
+                        Boolean(setupLink) ||
+                        (!form.email.trim() && !form.telegram_id?.trim()) ||
+                        (requireGroup && groups.length === 0)
+                    }
                     onClick={() => submit().catch(console.error)}
                 >
                     {translate("Save new user")}

@@ -30,7 +30,11 @@ vi.mock("@constants/Routes", () => ({
 }));
 
 vi.mock("@layouts/SettingsLayout", () => ({
-    default: (props: any) => <div data-administrator={props.administrator}>{props.children}</div>,
+    default: (props: any) => (
+        <div data-administrator={props.administrator} data-manager={props.manager}>
+            {props.children}
+        </div>
+    ),
 }));
 
 vi.mock("@views/Settings/Admin/UsersView", () => ({
@@ -169,6 +173,43 @@ it("renders permissions route only for an administrator", async () => {
         );
     });
     expect(screen.getByTestId("admin-permissions-view")).toBeInTheDocument();
+});
+
+it("renders delegated admin routes for a manager", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: true, manager: true, username: "manager" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    await act(async () => {
+        render(
+            <MemoryRouter initialEntries={["/admin/users"]}>
+                <SettingsRouter />
+            </MemoryRouter>,
+        );
+    });
+    expect(screen.getByTestId("admin-users-view")).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalledWith("/settings");
+});
+
+it("redirects a manager away from full administrator permissions", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(useAutheliaState).mockReturnValue([
+        { authentication_level: 1, factor_knowledge: true, manager: true, username: "manager" },
+        vi.fn(),
+        false,
+        undefined,
+    ]);
+    await act(async () => {
+        render(
+            <MemoryRouter initialEntries={["/admin/permissions"]}>
+                <SettingsRouter />
+            </MemoryRouter>,
+        );
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("/settings");
 });
 
 it("redirects a non-administrator away from an admin route", async () => {

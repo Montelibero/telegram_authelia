@@ -220,6 +220,17 @@ it("creates a user", async () => {
     );
 });
 
+it("requires a delegated manager to assign at least one managed group", async () => {
+    render(<UsersView currentUsername="manager" fullAdministrator={false} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create user" }));
+    fireEvent.change(screen.getByLabelText("Telegram ID"), { target: { value: "987654321" } });
+    expect(screen.getByRole("button", { name: "Save new user" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "app:grafana" }));
+    expect(screen.getByRole("button", { name: "Save new user" })).toBeEnabled();
+});
+
 it("creates an email-only user and immediately shows a copyable password setup link", async () => {
     vi.mocked(createAdminUser).mockResolvedValue({
         ...details,
@@ -291,6 +302,17 @@ it("links a Telegram ID to an existing user", async () => {
     fireEvent.click(screen.getByRole("button", { name: "Link Telegram" }));
 
     await waitFor(() => expect(linkAdminUserTelegram).toHaveBeenCalledWith("alice", "987654321", 1));
+});
+
+it("keeps an unrelated user read-only while allowing assignment to a managed group", async () => {
+    vi.mocked(getAdminUser).mockResolvedValue({ ...details, groups: ["foreign"] });
+    render(<UsersView currentUsername="manager" fullAdministrator={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: /alice/i }));
+
+    expect(await screen.findByLabelText("Display name")).toBeDisabled();
+    expect(screen.getByLabelText("Status")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Telegram ID")).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "app:grafana" })).toBeEnabled();
 });
 
 it("updates a user and generates a copyable setup link", async () => {

@@ -18,6 +18,7 @@ func TestMTLMigrationsCreateSchema(t *testing.T) {
 	require.NoError(t, provider.db.Select(&tables, `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'mtl_%' ORDER BY name`))
 	assert.Equal(t, []string{
 		"mtl_audit_events",
+		"mtl_group_managers",
 		"mtl_group_memberships",
 		"mtl_groups",
 		"mtl_registration_requests",
@@ -29,7 +30,7 @@ func TestMTLMigrationsCreateSchema(t *testing.T) {
 
 	var version int
 	require.NoError(t, provider.db.Get(&version, `SELECT MAX(version) FROM mtl_schema_migrations`))
-	assert.Equal(t, 3, version)
+	assert.Equal(t, 4, version)
 
 	var sessionEpochColumn int
 	require.NoError(t, provider.db.Get(&sessionEpochColumn, `SELECT COUNT(*) FROM pragma_table_info('mtl_users') WHERE name = 'session_epoch'`))
@@ -45,7 +46,7 @@ func TestMTLMigrationsAreIdempotent(t *testing.T) {
 
 	var count int
 	require.NoError(t, provider.db.Get(&count, `SELECT COUNT(*) FROM mtl_schema_migrations`))
-	assert.Equal(t, 3, count)
+	assert.Equal(t, 4, count)
 }
 
 func TestMTLRegistrationSchemaConstraints(t *testing.T) {

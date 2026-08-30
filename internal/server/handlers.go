@@ -215,43 +215,49 @@ func handlerMain(ctx context.Context, config *schema.Configuration, providers mi
 		WithPostMiddlewares(middlewares.RequireElevated).
 		Build()
 
-	middlewareAdmin := middlewares.NewBridgeBuilder(*config, providers).
-		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
-		WithPostMiddlewares(middlewares.RequireAdmin).
-		Build()
 	middlewareAdminMutation := middlewares.NewBridgeBuilder(*config, providers).
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
 		WithPostMiddlewares(middlewares.RequireAdminMutation).
+		Build()
+	middlewareAdminAccess := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminAccess).
+		Build()
+	middlewareAdminAccessMutation := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireAdminAccessMutation).
 		Build()
 
 	r.HEAD("/api/health", middlewareAPI(handlers.HealthGET))
 	r.GET("/api/health", middlewareAPI(handlers.HealthGET))
 
 	r.GET("/api/state", middlewareAPI(handlers.StateGET))
-	r.GET("/api/admin", middlewareAdmin(handlers.AdminGET))
-	r.GET("/api/admin/users", middlewareAdmin(handlers.AdminUsersGET))
-	r.GET("/api/admin/applications", middlewareAdmin(handlers.AdminApplicationsGET))
-	r.PUT("/api/admin/application/user", middlewareAdminMutation(handlers.AdminApplicationUserPUT))
-	r.DELETE("/api/admin/application/user", middlewareAdminMutation(handlers.AdminApplicationUserDELETE))
-	r.POST("/api/admin/users", middlewareAdminMutation(handlers.AdminUserPOST))
-	r.GET("/api/admin/user", middlewareAdmin(handlers.AdminUserGET))
-	r.PATCH("/api/admin/user", middlewareAdminMutation(handlers.AdminUserPATCH))
-	r.POST("/api/admin/users/email", middlewareAdminMutation(handlers.AdminUserEmailPOST))
-	r.PUT("/api/admin/users/email/primary", middlewareAdminMutation(handlers.AdminUserEmailPrimaryPUT))
-	r.DELETE("/api/admin/users/email", middlewareAdminMutation(handlers.AdminUserEmailDELETE))
-	r.DELETE("/api/admin/users/identity", middlewareAdminMutation(handlers.AdminUserIdentityDELETE))
-	r.PUT("/api/admin/users/identity", middlewareAdminMutation(handlers.AdminUserIdentityPUT))
-	r.POST("/api/admin/users/setup-link", middlewareAdminMutation(handlers.AdminUserSetupLinkPOST))
-	r.GET("/api/admin/groups", middlewareAdmin(handlers.AdminGroupsGET))
+	r.GET("/api/admin", middlewareAdminAccess(handlers.AdminGET))
+	r.GET("/api/admin/users", middlewareAdminAccess(handlers.AdminUsersGET))
+	r.GET("/api/admin/applications", middlewareAdminAccess(handlers.AdminApplicationsGET))
+	r.PUT("/api/admin/application/user", middlewareAdminAccessMutation(handlers.AdminApplicationUserPUT))
+	r.DELETE("/api/admin/application/user", middlewareAdminAccessMutation(handlers.AdminApplicationUserDELETE))
+	r.POST("/api/admin/users", middlewareAdminAccessMutation(handlers.AdminUserPOST))
+	r.GET("/api/admin/user", middlewareAdminAccess(handlers.AdminUserGET))
+	r.PATCH("/api/admin/user", middlewareAdminAccessMutation(handlers.AdminUserPATCH))
+	r.POST("/api/admin/users/email", middlewareAdminAccessMutation(handlers.AdminUserEmailPOST))
+	r.PUT("/api/admin/users/email/primary", middlewareAdminAccessMutation(handlers.AdminUserEmailPrimaryPUT))
+	r.DELETE("/api/admin/users/email", middlewareAdminAccessMutation(handlers.AdminUserEmailDELETE))
+	r.DELETE("/api/admin/users/identity", middlewareAdminAccessMutation(handlers.AdminUserIdentityDELETE))
+	r.PUT("/api/admin/users/identity", middlewareAdminAccessMutation(handlers.AdminUserIdentityPUT))
+	r.POST("/api/admin/users/setup-link", middlewareAdminAccessMutation(handlers.AdminUserSetupLinkPOST))
+	r.GET("/api/admin/groups", middlewareAdminAccess(handlers.AdminGroupsGET))
 	r.POST("/api/admin/groups", middlewareAdminMutation(handlers.AdminGroupPOST))
-	r.GET("/api/admin/group", middlewareAdmin(handlers.AdminGroupGET))
+	r.GET("/api/admin/group", middlewareAdminAccess(handlers.AdminGroupGET))
 	r.PATCH("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupPATCH))
 	r.DELETE("/api/admin/group", middlewareAdminMutation(handlers.AdminGroupDELETE))
-	r.PUT("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserPUT))
-	r.DELETE("/api/admin/group/user", middlewareAdminMutation(handlers.AdminGroupUserDELETE))
-	r.GET("/api/admin/registrations", middlewareAdmin(handlers.AdminRegistrationsGET))
-	r.GET("/api/admin/registration", middlewareAdmin(handlers.AdminRegistrationGET))
-	r.POST("/api/admin/registration/approve", middlewareAdminMutation(handlers.AdminRegistrationApprovePOST))
+	r.PUT("/api/admin/group/user", middlewareAdminAccessMutation(handlers.AdminGroupUserPUT))
+	r.DELETE("/api/admin/group/user", middlewareAdminAccessMutation(handlers.AdminGroupUserDELETE))
+	r.PUT("/api/admin/group/manager", middlewareAdminMutation(handlers.AdminGroupManagerPUT))
+	r.DELETE("/api/admin/group/manager", middlewareAdminMutation(handlers.AdminGroupManagerDELETE))
+	r.GET("/api/admin/registrations", middlewareAdminAccess(handlers.AdminRegistrationsGET))
+	r.GET("/api/admin/registration", middlewareAdminAccess(handlers.AdminRegistrationGET))
+	r.POST("/api/admin/registration/approve", middlewareAdminAccessMutation(handlers.AdminRegistrationApprovePOST))
 	r.POST("/api/admin/registration/reject", middlewareAdminMutation(handlers.AdminRegistrationRejectPOST))
 
 	r.GET("/api/configuration", middleware1FA(handlers.ConfigurationGET))

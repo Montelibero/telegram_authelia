@@ -28,15 +28,19 @@ func TestAdminGETReturnsSafeSessionCapabilities(t *testing.T) {
 	var response struct {
 		Status string `json:"status"`
 		Data   struct {
-			Username      string `json:"username"`
-			MutationReady bool   `json:"mutation_ready"`
+			Username          string   `json:"username"`
+			MutationReady     bool     `json:"mutation_ready"`
+			FullAdministrator bool     `json:"full_administrator"`
+			ManagedGroups     []string `json:"managed_groups"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(mock.Ctx.Response.Body(), &response))
 	assert.Equal(t, "OK", response.Status)
 	assert.Equal(t, "admin", response.Data.Username)
 	assert.False(t, response.Data.MutationReady)
-	assert.NotContains(t, string(mock.Ctx.Response.Body()), "groups")
+	assert.True(t, response.Data.FullAdministrator)
+	assert.Empty(t, response.Data.ManagedGroups)
+	assert.NotContains(t, string(mock.Ctx.Response.Body()), "session_epoch")
 }
 
 func TestAdminGETReportsFreshAuthenticationReadyForMutation(t *testing.T) {

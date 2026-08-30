@@ -87,6 +87,10 @@ func AdminRegistrationApprovePOST(ctx *middlewares.AutheliaCtx) {
 	if !adminAPIParse(ctx, &request) {
 		return
 	}
+	if !loadAdminAccessScope(ctx).managesAll(request.Groups) {
+		ctx.ReplyForbidden()
+		return
+	}
 	store, ok := ctx.Providers.StorageProvider.(adminRegistrationStore)
 	if !ok {
 		adminAPIError(ctx, errors.New("admin registration storage is unavailable"))
@@ -100,6 +104,9 @@ func AdminRegistrationApprovePOST(ctx *middlewares.AutheliaCtx) {
 }
 
 func AdminRegistrationRejectPOST(ctx *middlewares.AutheliaCtx) {
+	if !requireAdminFull(ctx) {
+		return
+	}
 	var request adminRegistrationMutationRequest
 	if !adminAPIParse(ctx, &request) {
 		return

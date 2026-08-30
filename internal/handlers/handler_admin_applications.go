@@ -85,6 +85,9 @@ func adminApplicationUserMutation(ctx *middlewares.AutheliaCtx, grant bool) {
 	}
 
 	group := applicationGroup(application)
+	if !requireAdminManagedGroup(ctx, group) {
+		return
+	}
 	var err error
 	if grant {
 		_, err = store.AddMTLAdminGroupUser(ctx, group, request.Username, request.ExpectedVersion, adminAPIActor(ctx))
@@ -116,12 +119,16 @@ func loadAdminApplications(ctx *middlewares.AutheliaCtx, store adminApplicationS
 	}
 
 	applications := configuredPermissionApplications(ctx.Configuration.AccessControl.Rules, ctx.Configuration.Applications)
+	scope := loadAdminAccessScope(ctx)
 	response := make([]adminApplicationResponse, 0, len(applications))
 	for _, application := range applications {
 		if !application.IsEnabled() {
 			continue
 		}
 		group := applicationGroup(application)
+		if !scope.managesGroup(group) {
+			continue
+		}
 		version, found := versions[group]
 		if !found {
 			return nil, storage.ErrMTLGroupNotFound

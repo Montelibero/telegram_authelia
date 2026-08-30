@@ -217,7 +217,11 @@ func (s adminAPITestStore) ListMTLAdminUsers(context.Context) ([]model.MTLAdminU
 }
 
 func (s adminAPITestStore) LoadMTLAdminUser(_ context.Context, username string) (model.MTLAdminUserDetails, bool, error) {
-	return s.SQLiteProvider.LoadMTLAdminUser(context.Background(), username)
+	details, found, err := s.SQLiteProvider.LoadMTLAdminUser(context.Background(), username)
+	if err == nil && found && username == "admin" {
+		details.Groups = append(details.Groups, "admins")
+	}
+	return details, found, err
 }
 
 func (s adminAPITestStore) CreateMTLAdminUser(_ context.Context, create model.MTLAdminUserCreate, actor string) (model.MTLAdminUserDetails, error) {
@@ -252,6 +256,10 @@ func (s adminAPITestStore) ListMTLAdminGroups(context.Context) ([]model.MTLAdmin
 	return s.SQLiteProvider.ListMTLAdminGroups(context.Background())
 }
 
+func (s adminAPITestStore) ListMTLManagedGroups(_ context.Context, username string) ([]string, error) {
+	return s.SQLiteProvider.ListMTLManagedGroups(context.Background(), username)
+}
+
 func (s adminAPITestStore) LoadMTLAdminGroup(_ context.Context, name string) (model.MTLAdminGroupDetails, bool, error) {
 	return s.SQLiteProvider.LoadMTLAdminGroup(context.Background(), name)
 }
@@ -274,6 +282,14 @@ func (s adminAPITestStore) AddMTLAdminGroupUser(_ context.Context, name, usernam
 
 func (s adminAPITestStore) RemoveMTLAdminGroupUser(_ context.Context, name, username string, version int, actor string) (model.MTLAdminGroupDetails, error) {
 	return s.SQLiteProvider.RemoveMTLAdminGroupUser(context.Background(), name, username, version, actor)
+}
+
+func (s adminAPITestStore) AddMTLAdminGroupManager(_ context.Context, name, username string, version int, actor string) (model.MTLAdminGroupDetails, error) {
+	return s.SQLiteProvider.AddMTLAdminGroupManager(context.Background(), name, username, version, actor)
+}
+
+func (s adminAPITestStore) RemoveMTLAdminGroupManager(_ context.Context, name, username string, version int, actor string) (model.MTLAdminGroupDetails, error) {
+	return s.SQLiteProvider.RemoveMTLAdminGroupManager(context.Background(), name, username, version, actor)
 }
 
 func (s adminAPITestStore) ListMTLRegistrations(_ context.Context, status model.MTLRegistrationStatus) ([]model.MTLRegistrationRequest, error) {
